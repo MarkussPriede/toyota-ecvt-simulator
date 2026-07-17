@@ -1,18 +1,27 @@
 export type DriveSelector = 'P' | 'R' | 'N' | 'D' | 'B'
 
-export type ModeId =
-  | 'ready'
-  | 'ev-launch'
-  | 'gentle-acceleration'
-  | 'strong-acceleration'
-  | 'cruise'
-  | 'stationary-charge'
-  | 'regeneration'
-  | 'reverse'
-  | 'regen-limited'
-  | 'neutral'
-  | 'coasting'
-  | 'warm-up'
+export type EngineState = 'OFF' | 'CRANKING' | 'FUELED' | 'SPINNING_UNFUELED' | 'STOPPING'
+
+export type VehicleMotionState =
+  | 'STATIONARY'
+  | 'ACCELERATING'
+  | 'CRUISING'
+  | 'COASTING'
+  | 'BRAKING'
+  | 'REVERSING'
+
+export type SystemObjective =
+  | 'ENGINE_OFF'
+  | 'STARTING'
+  | 'IDLING'
+  | 'WARM_UP'
+  | 'PROPULSION'
+  | 'EV_PROPULSION'
+  | 'CHARGING'
+  | 'ASSISTING'
+  | 'REGENERATING'
+  | 'ENGINE_BRAKING'
+  | 'MG1_PROTECTION'
 
 export type ComponentId =
   | 'engine'
@@ -28,13 +37,8 @@ export type ComponentId =
   | 'battery'
   | 'inverter'
 
-export type CameraPreset =
-  | 'drivetrain'
-  | 'planetary'
-  | 'mg1'
-  | 'mg2'
-  | 'differential'
-  | 'electrical'
+export type CameraPreset = 'drivetrain' | 'planetary' | 'mg1' | 'mg2' | 'differential' | 'electrical'
+export type VisualMode = 'schematic' | 'cutaway'
 
 export type FlowId =
   | 'engine-planetary'
@@ -43,10 +47,14 @@ export type FlowId =
   | 'battery-inverter'
   | 'inverter-mg2'
   | 'mg1-inverter'
+  | 'inverter-mg1'
+  | 'mg1-engine'
   | 'wheels-mg2'
   | 'inverter-battery'
+  | 'drivetrain-engine'
+  | 'friction-brakes'
 
-export type FlowKind = 'engine' | 'battery' | 'regen' | 'mg1' | 'mg2'
+export type FlowKind = 'engine' | 'battery' | 'regen' | 'mg1' | 'mg2' | 'loss'
 
 export interface EnergyFlow {
   id: FlowId
@@ -55,43 +63,162 @@ export interface EnergyFlow {
   direction: 1 | -1
 }
 
-export interface SimulationInputs {
+export interface DriverInputs {
+  /** Normalized driver request, 0..1. */
   accelerator: number
+  /** Normalized driver request, 0..1. */
   brake: number
-  vehicleSpeed: number
-  batterySoc: number
   selector: DriveSelector
-  engineWarm: boolean
-  automatic: boolean
-  scenario: ModeId | null
+  roadGradePercent: number
 }
 
-export interface SimulationOutput {
-  mode: ModeId
-  modeLabel: string
-  description: string
+export interface SimulationState {
+  timeSeconds: number
+  vehicleSpeedMps: number
+  vehiclePositionM: number
+  vehicleAccelerationMps2: number
+  batterySoc: number
+  batteryEnergyKwh: number
+  /** Finite physical energy below the displayed usable-SOC window. */
+  protectedReserveEnergyKwh: number
+  engineState: EngineState
   engineRpm: number
+  engineTorqueNm: number
   mg1Rpm: number
+  mg1TorqueNm: number
   mg2Rpm: number
+  mg2TorqueNm: number
+  engineTemperatureC: number
+  chargeRequestActive: boolean
+  warmupRequestActive: boolean
+  vehicleMotionState: VehicleMotionState
+  systemObjective: SystemObjective
+  motionStateTimerSeconds: number
+  systemObjectiveTimerSeconds: number
+  pendingVehicleMotionState: VehicleMotionState
+  pendingSystemObjective: SystemObjective
+  pendingMotionStateTimerSeconds: number
+  pendingSystemObjectiveTimerSeconds: number
+  crankingTimerSeconds: number
+  /** Accumulated feasible MG1-to-engine cranking work. */
+  crankingWorkKj: number
+  /** Feasible cranking mechanical power delivered during the preceding substep. */
+  crankingDeliveredPowerKw: number
+  engineOnTimerSeconds: number
+  engineOffTimerSeconds: number
+  stoppingTimerSeconds: number
+  parkLockEngaged: boolean
+}
+
+export interface PowerDiagnostics {
+  engineMechanicalPowerKw: number
+  mg1MechanicalPowerKw: number
+  mg1ElectricalPowerKw: number
+  mg2MechanicalPowerKw: number
+  mg2ElectricalPowerKw: number
+  batteryTerminalPowerKw: number
+  batteryInternalPowerKw: number
+  accessoryPowerKw: number
+  /** Positive when reserve supplies essential loads; negative while generated power recharges it. */
+  protectedReservePowerKw: number
+  protectedReserveEnergyKwh: number
+  inverterLossKw: number
+  inverterThroughputKw: number
+  motorLossKw: number
+  drivetrainLossKw: number
+  drivetrainWheelPowerKw: number
+  wheelPowerKw: number
+  aerodynamicLossKw: number
+  rollingResistanceLossKw: number
+  roadGradePowerKw: number
+  roadLoadPowerKw: number
+  regenerativeBrakingKw: number
+  frictionBrakeLossKw: number
+  enginePumpingLossKw: number
+  totalRequestedBrakingKw: number
+  electricalBalanceResidualKw: number
+  mechanicalBalanceResidualKw: number
+  powerBalanceResidualKw: number
+  planetaryResidualRpmTeeth: number
+  mg2RatioResidualRpm: number
+  mg2ReductionResidualRpmTeeth: number
+  wheelDemandPowerKw: number
+  wheelDemandShortfallKw: number
+  engineTorqueViolationNm: number
+  enginePowerViolationKw: number
+  mg1TorqueViolationNm: number
+  mg1PowerViolationKw: number
+  mg2TorqueViolationNm: number
+  mg2PowerViolationKw: number
+  batteryDischargeViolationKw: number
+  batteryChargeViolationKw: number
+  inverterThroughputViolationKw: number
+}
+
+export interface SimulationTelemetry extends PowerDiagnostics {
+  vehicleSpeedKph: number
+  vehicleAccelerationMps2: number
+  vehiclePositionM: number
+  wheelRpm: number
   ringRpm: number
   carrierRpm: number
-  wheelRpm: number
-  batteryPowerKw: number
-  enginePowerKw: number
-  mg1PowerKw: number
-  mg2PowerKw: number
-  regenPowerKw: number
-  frictionBrakePowerKw: number
-  wheelPowerKw: number
+  engineRpm: number
+  engineTorqueNm: number
+  mg1Rpm: number
+  mg1TorqueNm: number
+  mg2Rpm: number
+  mg2TorqueNm: number
   wheelTorqueNm: number
+  batterySoc: number
+  engineTemperatureC: number
+  chargeRequestActive: boolean
+  socTargetPercent: number
+  engineState: EngineState
+  vehicleMotionState: VehicleMotionState
+  systemObjective: SystemObjective
+  motionLabel: string
+  objectiveLabel: string
+  description: string
   mg1LimitActive: boolean
   energyFlows: EnergyFlow[]
 }
 
-export interface ScenarioPreset {
+export interface SimulationStepResult {
+  state: SimulationState
+  telemetry: SimulationTelemetry
+  diagnostics: PowerDiagnostics
+}
+
+export interface TimelinePoint {
+  atSeconds: number
+  inputs: Partial<DriverInputs>
+  camera?: CameraPreset
+  component?: ComponentId
+  explanation?: string
+}
+
+export interface ScenarioDefinition {
   id: string
   label: string
   shortLabel: string
-  mode: ModeId
-  inputs: Partial<SimulationInputs>
+  initialState: Partial<SimulationState> & { batterySoc: number; vehicleSpeedMps: number }
+  initialInputs: DriverInputs
+  inputTimeline: TimelinePoint[]
+  durationSeconds: number
+  cameraSequence: TimelinePoint[]
+  highlightedComponents: ComponentId[]
+  explanationSteps: string[]
+  completionCondition: string
+}
+
+export interface ScenarioRunOptions {
+  initialState: SimulationState | (Partial<SimulationState> & { batterySoc: number; vehicleSpeedMps: number })
+  initialInputs?: DriverInputs
+  inputTimeline: TimelinePoint[]
+  durationSeconds: number
+  timestepSeconds: number
+}
+
+export interface ScenarioSample extends SimulationStepResult {
+  inputs: DriverInputs
 }

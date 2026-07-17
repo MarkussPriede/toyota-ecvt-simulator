@@ -1,16 +1,34 @@
 import { create } from 'zustand'
-import { DRIVETRAIN, LIMITS } from '../simulation/constants'
-import { calculateSimulation } from '../simulation/controller'
+import { BATTERY, maxVehicleSpeedMps } from '../simulation/constants'
 import { clamp } from '../simulation/planetary'
-import { scenarioById } from '../simulation/scenarios'
-import type { CameraPreset, ComponentId, DriveSelector, ModeId, SimulationInputs, SimulationOutput } from '../simulation/types'
+import { createInitialSimulationState, DEFAULT_DRIVER_INPUTS, stepSimulation } from '../simulation/engine'
+import { inputsAtTime, scenarioById } from '../simulation/scenarios'
+import type {
+  CameraPreset,
+  ComponentId,
+  DriverInputs,
+  DriveSelector,
+  PowerDiagnostics,
+  SimulationState,
+  SimulationTelemetry,
+  VisualMode,
+} from '../simulation/types'
 
-interface SimulatorState {
-  inputs: SimulationInputs
-  output: SimulationOutput
+interface SimulatorStore {
+  inputs: DriverInputs
+  simulation: SimulationState
+  telemetry: SimulationTelemetry
+  diagnostics: PowerDiagnostics
   activeScenarioId: string | null
+  scenarioElapsedSeconds: number
+  lastScenarioCueSeconds: number
   running: boolean
   timeScale: number
+  visualSpeed: number
+  visualStep: number
+  visualMode: VisualMode
+  developerMode: boolean
+  inspectionMode: boolean
   housingOpacity: number
   exploded: number
   labels: boolean
@@ -21,11 +39,19 @@ interface SimulatorState {
   tutorialActive: boolean
   tutorialStep: number
   quality: 'low' | 'medium' | 'high'
-  setInput: <K extends keyof SimulationInputs>(key: K, value: SimulationInputs[K]) => void
+  setInput: <K extends keyof DriverInputs>(key: K, value: DriverInputs[K]) => void
+  setBatterySoc: (soc: number) => void
+  setEngineTemperature: (temperatureC: number) => void
+  setInspectionSpeedKph: (speedKph: number) => void
   setSelector: (selector: DriveSelector) => void
   applyScenario: (id: string) => void
   setRunning: (running: boolean) => void
   setTimeScale: (timeScale: number) => void
+  setVisualSpeed: (visualSpeed: number) => void
+  stepMechanism: () => void
+  setVisualMode: (mode: VisualMode) => void
+  setDeveloperMode: (enabled: boolean) => void
+  setInspectionMode: (enabled: boolean) => void
   setHousingOpacity: (opacity: number) => void
   setExploded: (amount: number) => void
   setLabels: (labels: boolean) => void
@@ -40,88 +66,125 @@ interface SimulatorState {
   reset: () => void
 }
 
-const initialInputs: SimulationInputs = {
-  accelerator: 0,
-  brake: 0,
-  vehicleSpeed: 0,
-  batterySoc: 58,
-  selector: 'P',
-  engineWarm: true,
-  automatic: true,
-  scenario: null,
+const initialSimulation = createInitialSimulationState()
+const initialResult = stepSimulation(initialSimulation, DEFAULT_DRIVER_INPUTS, 0)
+let renderAccumulator = 0
+
+function scenarioState(id: string) {
+  const scenario = scenarioById(id)
+  if (!scenario) return null
+  const base = createInitialSimulationState({
+    vehicleSpeedMps: scenario.initialState.vehicleSpeedMps,
+    batterySoc: scenario.initialState.batterySoc,
+    engineTemperatureC: scenario.initialState.engineTemperatureC,
+    engineState: scenario.initialState.engineState,
+    engineRpm: scenario.initialState.engineRpm,
+    chargeRequestActive: scenario.initialState.chargeRequestActive,
+  })
+  const simulation = { ...base, ...scenario.initialState }
+  simulation.batteryEnergyKwh = BATTERY.nominalCapacityKwh * simulation.batterySoc / 100
+  const result = stepSimulation(simulation, scenario.initialInputs, 0)
+  return { scenario, result }
 }
 
-// The Three.js animation loop runs at display refresh rate, but the educational
-// controller and dashboard only need a 10 Hz state update. Throttling here keeps
-// React controls responsive while meshes continue to animate smoothly in useFrame.
-let simulationAccumulator = 0
-
-export const useSimulator = create<SimulatorState>((set, get) => ({
-  inputs: initialInputs,
-  output: calculateSimulation(initialInputs),
+export const useSimulator = create<SimulatorStore>((set, get) => ({
+  inputs: { ...DEFAULT_DRIVER_INPUTS },
+  simulation: initialResult.state,
+  telemetry: initialResult.telemetry,
+  diagnostics: initialResult.diagnostics,
   activeScenarioId: null,
+  scenarioElapsedSeconds: 0,
+  lastScenarioCueSeconds: -1,
   running: true,
   timeScale: 1,
+  visualSpeed: 0.25,
+  visualStep: 0,
+  visualMode: 'schematic',
+  developerMode: false,
+  inspectionMode: false,
   housingOpacity: 0.16,
   exploded: 0,
   labels: true,
   energyArrows: true,
-  rotationArrows: false,
+  rotationArrows: true,
   selectedComponent: 'ring',
   cameraPreset: 'drivetrain',
   tutorialActive: false,
   tutorialStep: 0,
   quality: 'high',
-  setInput: (key, value) => set((state) => {
-    let inputs = { ...state.inputs, [key]: value }
-    let activeScenarioId = state.activeScenarioId
-
-    if (key === 'automatic') {
-      inputs = {
-        ...inputs,
-        automatic: Boolean(value),
-        scenario: value ? null : state.output.mode,
-      }
-      activeScenarioId = null
-    } else if (key !== 'scenario') {
-      // Pedals are mutually exclusive driver commands in this teaching model.
-      if (key === 'accelerator' && Number(value) > 0) inputs.brake = 0
-      if (key === 'brake' && Number(value) > 0) inputs.accelerator = 0
-
-      // The first user edit after loading a preset returns control to the
-      // automatic hybrid controller instead of silently leaving the old mode pinned.
-      if (activeScenarioId) {
-        inputs.automatic = true
-        inputs.scenario = null
-        activeScenarioId = null
-      } else {
-        inputs.scenario = state.inputs.automatic ? null : state.inputs.scenario
-      }
+  setInput: (key, value) => set((store) => {
+    const inputs = { ...store.inputs, [key]: value }
+    if (key === 'accelerator' && Number(value) > 0) inputs.brake = 0
+    if (key === 'brake' && Number(value) > 0) inputs.accelerator = 0
+    return { inputs, activeScenarioId: null, scenarioElapsedSeconds: 0 }
+  }),
+  setBatterySoc: (soc) => set((store) => {
+    const batterySoc = clamp(soc, BATTERY.hardLowerSoc, BATTERY.hardUpperSoc)
+    const simulation = {
+      ...store.simulation,
+      batterySoc,
+      batteryEnergyKwh: BATTERY.nominalCapacityKwh * batterySoc / 100,
+      chargeRequestActive: batterySoc <= BATTERY.chargeRequestSoc
+        ? true
+        : batterySoc >= BATTERY.chargeClearSoc
+          ? false
+          : store.simulation.chargeRequestActive,
     }
-
-    return { inputs, activeScenarioId, output: calculateSimulation(inputs) }
+    const result = stepSimulation(simulation, store.inputs, 0)
+    return { simulation: result.state, telemetry: result.telemetry, diagnostics: result.diagnostics, activeScenarioId: null }
+  }),
+  setEngineTemperature: (engineTemperatureC) => set((store) => {
+    const simulation = { ...store.simulation, engineTemperatureC: clamp(engineTemperatureC, 20, 105) }
+    const result = stepSimulation(simulation, store.inputs, 0)
+    return { simulation: result.state, telemetry: result.telemetry, diagnostics: result.diagnostics, activeScenarioId: null }
+  }),
+  setInspectionSpeedKph: (speedKph) => set((store) => {
+    if (!store.inspectionMode || store.running) return {}
+    const signedSpeed = store.inputs.selector === 'R' ? -Math.abs(speedKph) : Math.abs(speedKph)
+    const simulation = { ...store.simulation, vehicleSpeedMps: clamp(signedSpeed / 3.6, -maxVehicleSpeedMps, maxVehicleSpeedMps) }
+    const result = stepSimulation(simulation, store.inputs, 0)
+    return { simulation: result.state, telemetry: result.telemetry, diagnostics: result.diagnostics, activeScenarioId: null }
   }),
   setSelector: (selector) => {
-    const { inputs } = get()
-    const reversingDirection = (inputs.selector === 'R' && (selector === 'D' || selector === 'B'))
-      || (selector === 'R' && (inputs.selector === 'D' || inputs.selector === 'B'))
-    if ((selector === 'P' && inputs.vehicleSpeed > 1) || (reversingDirection && inputs.vehicleSpeed > 5)) return
-    get().setInput('selector', selector)
+    const store = get()
+    const speedKph = Math.abs(store.simulation.vehicleSpeedMps) * 3.6
+    const reversing = (store.inputs.selector === 'R' && (selector === 'D' || selector === 'B'))
+      || (selector === 'R' && (store.inputs.selector === 'D' || store.inputs.selector === 'B'))
+    if ((selector === 'P' && speedKph > 1) || (reversing && speedKph > 5)) return
+    store.setInput('selector', selector)
   },
   applyScenario: (id) => {
-    const preset = scenarioById(id)
-    if (!preset) return
-    set((state) => {
-      simulationAccumulator = 0
-      const inputs = { ...state.inputs, ...preset.inputs, automatic: false, scenario: preset.mode }
-      return { inputs, activeScenarioId: id, output: calculateSimulation(inputs), running: true }
+    const prepared = scenarioState(id)
+    if (!prepared) return
+    renderAccumulator = 0
+    const firstCue = prepared.scenario.cameraSequence[0]
+    set({
+      inputs: { ...prepared.scenario.initialInputs },
+      simulation: prepared.result.state,
+      telemetry: prepared.result.telemetry,
+      diagnostics: prepared.result.diagnostics,
+      activeScenarioId: id,
+      scenarioElapsedSeconds: 0,
+      lastScenarioCueSeconds: firstCue?.atSeconds ?? -1,
+      running: true,
+      inspectionMode: false,
+      cameraPreset: firstCue?.camera ?? 'drivetrain',
+      selectedComponent: firstCue?.component ?? prepared.scenario.highlightedComponents[0] ?? 'ring',
     })
   },
   setRunning: (running) => {
-    if (!running) simulationAccumulator = 0
+    renderAccumulator = 0
     set({ running })
   },
   setTimeScale: (timeScale) => set({ timeScale }),
+  setVisualSpeed: (visualSpeed) => set({ visualSpeed }),
+  stepMechanism: () => set((store) => ({ visualStep: store.visualStep + 1 })),
+  setVisualMode: (visualMode) => set({ visualMode }),
+  setDeveloperMode: (developerMode) => set({ developerMode }),
+  setInspectionMode: (inspectionMode) => {
+    if (inspectionMode) get().setRunning(false)
+    set({ inspectionMode, activeScenarioId: null })
+  },
   setHousingOpacity: (housingOpacity) => set({ housingOpacity }),
   setExploded: (exploded) => set({ exploded }),
   setLabels: (labels) => set({ labels }),
@@ -133,27 +196,64 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
   setTutorialStep: (tutorialStep) => set({ tutorialStep }),
   setQuality: (quality) => set({ quality }),
   tick: (deltaSeconds) => {
-    const state = get()
-    if (!state.running) return
-    simulationAccumulator += Math.min(deltaSeconds, 0.1)
-    if (simulationAccumulator < 0.1) return
-    const dt = simulationAccumulator * state.timeScale
-    simulationAccumulator = 0
-    // Positive battery power means discharge; negative means charging.
-    const socDelta = -(state.output.batteryPowerKw * dt / 3600 / DRIVETRAIN.usableBatteryKwh) * 100
-    const batterySoc = clamp(state.inputs.batterySoc + socDelta, LIMITS.batterySocMin, LIMITS.batterySocMax)
-    const inputs = { ...state.inputs, batterySoc }
-    set({ inputs, output: calculateSimulation(inputs) })
+    const store = get()
+    if (!store.running || store.inspectionMode) return
+    renderAccumulator += Math.min(deltaSeconds, 0.1)
+    if (renderAccumulator < 1 / 30) return
+    const dt = renderAccumulator * store.timeScale
+    renderAccumulator = 0
+    const scenario = store.activeScenarioId ? scenarioById(store.activeScenarioId) : null
+    const inputs = scenario ? inputsAtTime(scenario.initialInputs, scenario.inputTimeline, store.scenarioElapsedSeconds) : store.inputs
+    const result = stepSimulation(store.simulation, inputs, dt)
+    const scenarioElapsedSeconds = scenario ? store.scenarioElapsedSeconds + dt : 0
+    const latestCue = scenario?.cameraSequence
+      .filter((point) => point.atSeconds <= scenarioElapsedSeconds)
+      .sort((a, b) => b.atSeconds - a.atSeconds)[0]
+    const applyLatestCue = Boolean(latestCue && latestCue.atSeconds > store.lastScenarioCueSeconds)
+    const chargeDemoComplete = Boolean(
+      scenario
+      && (scenario.id === 'low-soc-charge' || scenario.id === 'stationary-charge')
+      && store.simulation.chargeRequestActive
+      && !result.state.chargeRequestActive,
+    )
+    const stopDemoComplete = Boolean(scenario?.id === 'hard-brake' && Math.abs(result.state.vehicleSpeedMps) < 0.08)
+    const engineStartComplete = Boolean(scenario?.id === 'engine-start' && result.state.engineState === 'FUELED')
+    const scenarioComplete = Boolean(scenario && (
+      scenarioElapsedSeconds >= scenario.durationSeconds || chargeDemoComplete || stopDemoComplete || engineStartComplete
+    ))
+    set({
+      inputs,
+      simulation: result.state,
+      telemetry: result.telemetry,
+      diagnostics: result.diagnostics,
+      scenarioElapsedSeconds,
+      lastScenarioCueSeconds: applyLatestCue ? latestCue!.atSeconds : store.lastScenarioCueSeconds,
+      running: scenarioComplete ? false : store.running,
+      cameraPreset: applyLatestCue && latestCue?.camera ? latestCue.camera : store.cameraPreset,
+      selectedComponent: applyLatestCue && latestCue?.component ? latestCue.component : store.selectedComponent,
+    })
   },
   reset: () => {
-    simulationAccumulator = 0
+    renderAccumulator = 0
+    const simulation = createInitialSimulationState()
+    const result = stepSimulation(simulation, DEFAULT_DRIVER_INPUTS, 0)
     set({
-      inputs: initialInputs,
-      output: calculateSimulation(initialInputs),
+      inputs: { ...DEFAULT_DRIVER_INPUTS },
+      simulation: result.state,
+      telemetry: result.telemetry,
+      diagnostics: result.diagnostics,
       activeScenarioId: null,
+      scenarioElapsedSeconds: 0,
+      lastScenarioCueSeconds: -1,
       running: true,
       timeScale: 1,
+      visualSpeed: 0.25,
+      visualStep: 0,
+      visualMode: 'schematic',
+      developerMode: false,
+      inspectionMode: false,
       exploded: 0,
+      rotationArrows: true,
       selectedComponent: 'ring',
       cameraPreset: 'drivetrain',
       tutorialActive: false,
