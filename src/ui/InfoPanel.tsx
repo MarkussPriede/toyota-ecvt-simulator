@@ -6,21 +6,21 @@ import { useSimulator } from '../state/useSimulator'
 export function InfoPanel() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const selected = useSimulator((state) => state.selectedComponent)
-  const output = useSimulator((state) => state.output)
+  const output = useSimulator((state) => state.telemetry)
   const component = COMPONENTS[selected]
-  const currentNote = component.modeNotes[output.mode]
+  const currentNote = component.modeNotes[output.operatingMode]
   const live = selected === 'engine'
-    ? `${Math.round(output.engineRpm).toLocaleString()} rpm · ${output.enginePowerKw.toFixed(1)} kW`
+    ? `${Math.round(output.engineRpm).toLocaleString()} rpm · ${output.engineMechanicalPowerKw.toFixed(1)} kW`
     : selected === 'mg1' || selected === 'sun'
-      ? `${Math.round(output.mg1Rpm).toLocaleString()} rpm · ${output.mg1PowerKw.toFixed(1)} kW`
+      ? `${Math.round(output.mg1Rpm).toLocaleString()} rpm · ${output.mg1MechanicalPowerKw.toFixed(1)} kW mechanical`
       : selected === 'mg2'
-        ? `${Math.round(output.mg2Rpm).toLocaleString()} rpm · ${output.mg2PowerKw.toFixed(1)} kW`
+        ? `${Math.round(output.mg2Rpm).toLocaleString()} rpm · ${output.mg2MechanicalPowerKw.toFixed(1)} kW mechanical`
         : selected === 'ring'
           ? `${Math.round(output.ringRpm).toLocaleString()} rpm`
           : selected === 'wheels' || selected === 'differential'
             ? `${Math.round(output.wheelRpm).toLocaleString()} rpm · ${Math.round(output.wheelTorqueNm)} Nm`
             : selected === 'battery'
-              ? `${useSimulator.getState().inputs.batterySoc.toFixed(1)}% · ${output.batteryPowerKw.toFixed(1)} kW`
+              ? `${output.batterySoc.toFixed(1)}% · ${output.batteryTerminalPowerKw.toFixed(1)} kW`
               : 'Live state follows the highlighted path'
   return (
     <aside className={`side-panel info-panel ${mobileOpen ? 'is-mobile-open' : ''}`} aria-label="Component information">
