@@ -5,7 +5,7 @@ export function TransmissionHousing() {
   const opacity = useSimulator((state) => state.housingOpacity)
   const exploded = useSimulator((state) => state.exploded)
   return (
-    <group position={[0, -0.08 + exploded * 2.2, 0]}>
+    <group position={[0, -0.08 + exploded * 0.35, -exploded * 3.2]}>
       <RoundedBox args={[8.8, 3.4, 3.4]} radius={0.55} smoothness={6} castShadow receiveShadow>
         <meshPhysicalMaterial
           color="#9bacb4"

@@ -21,7 +21,7 @@ function CircularArrow({ position, radius, reverse = false, color }: { position:
 
 export function RotationArrows() {
   const visible = useSimulator((state) => state.rotationArrows)
-  const output = useSimulator((state) => state.output)
+  const output = useSimulator((state) => state.telemetry)
   if (!visible) return null
   return (
     <group>

@@ -1,6 +1,6 @@
 import { OrbitControls } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ElementRef } from 'react'
 import { Vector3 } from 'three'
 import { useSimulator } from '../state/useSimulator'
 
@@ -14,7 +14,7 @@ const VIEWS = {
 } as const
 
 export function CameraRig() {
-  const controls = useRef<any>(null)
+  const controls = useRef<ElementRef<typeof OrbitControls>>(null)
   const preset = useSimulator((state) => state.cameraPreset)
   const { camera, size } = useThree()
   const progress = useRef(1)

@@ -1,19 +1,12 @@
 import { ContactShadows, Grid } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
 import { Suspense } from 'react'
-import { ElectricalAssembly, DifferentialAssembly, EngineAssembly, MotorAssembly, ReductionAssembly } from '../drivetrain/Assemblies'
+import { ElectricalAssembly, DifferentialAssembly, EngineAssembly, MechanicalConnections, MotorAssembly, ReductionAssembly } from '../drivetrain/Assemblies'
 import { PowerSplitDevice } from '../drivetrain/PowerSplitDevice'
 import { useSimulator } from '../state/useSimulator'
 import { CameraRig } from './CameraRig'
 import { EnergyFlows } from './EnergyFlows'
 import { RotationArrows } from './RotationArrows'
 import { TransmissionHousing } from './TransmissionHousing'
-
-function SimulationClock() {
-  const tick = useSimulator((state) => state.tick)
-  useFrame((_, delta) => tick(delta))
-  return null
-}
 
 export function DrivetrainScene() {
   const quality = useSimulator((state) => state.quality)
@@ -27,7 +20,6 @@ export function DrivetrainScene() {
       <spotLight position={[2, 11, 8]} angle={0.48} penumbra={0.75} intensity={3.2} castShadow={quality !== 'low'} shadow-mapSize-width={quality === 'high' ? 2048 : 1024} shadow-mapSize-height={quality === 'high' ? 2048 : 1024} />
       <pointLight position={[-7, 3, 5]} color="#ffad72" intensity={2.0} distance={16} />
       <pointLight position={[6, 4, -5]} color="#59d9ff" intensity={1.8} distance={16} />
-      <SimulationClock />
       <group position={[0, 0.35, 0]}>
         <TransmissionHousing />
         <EngineAssembly />
@@ -37,6 +29,7 @@ export function DrivetrainScene() {
         <ReductionAssembly />
         <DifferentialAssembly />
         <ElectricalAssembly />
+        <MechanicalConnections />
         <EnergyFlows />
         <RotationArrows />
       </group>

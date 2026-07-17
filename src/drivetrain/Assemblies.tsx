@@ -1,7 +1,7 @@
 import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
-import type { Group, Mesh } from 'three'
-import { VISUAL_RPM_SCALE } from '../simulation/constants'
+import type { Group } from 'three'
+import { MG2_REDUCTION, VISUAL_RPM_SCALE } from '../simulation/constants'
 import { useSimulator } from '../state/useSimulator'
 import { Gear } from './Gear'
 import { Selectable } from './Selectable'
@@ -28,7 +28,7 @@ function Stator({ radius, length, color }: { radius: number; length: number; col
 
 export function EngineAssembly() {
   const shaft = useRef<Group>(null)
-  const rpm = useSimulator((state) => state.output.engineRpm)
+  const rpm = useSimulator((state) => state.telemetry.engineRpm)
   const running = useSimulator((state) => state.running)
   const scale = useSimulator((state) => state.timeScale)
   useFrame((_, delta) => {
@@ -65,7 +65,7 @@ export function EngineAssembly() {
 
 export function MotorAssembly({ kind }: { kind: 'mg1' | 'mg2' }) {
   const rotor = useRef<Group>(null)
-  const output = useSimulator((state) => state.output)
+  const output = useSimulator((state) => state.telemetry)
   const running = useSimulator((state) => state.running)
   const scale = useSimulator((state) => state.timeScale)
   const isMg1 = kind === 'mg1'
@@ -94,55 +94,88 @@ export function MotorAssembly({ kind }: { kind: 'mg1' | 'mg2' }) {
 }
 
 export function ReductionAssembly() {
-  const fast = useRef<Group>(null)
-  const slow = useRef<Group>(null)
-  const rpm = useSimulator((state) => state.output.mg2Rpm)
+  const sun = useRef<Group>(null)
+  const ring = useRef<Group>(null)
+  const planets = useRef<Group[]>([])
+  const rpm = useSimulator((state) => state.telemetry.mg2Rpm)
   const running = useSimulator((state) => state.running)
   const scale = useSimulator((state) => state.timeScale)
   useFrame((_, delta) => {
     if (!running) return
     const d = rpm * Math.min(delta, 0.05) * scale * VISUAL_RPM_SCALE
-    if (fast.current) fast.current.rotation.x += d
-    if (slow.current) slow.current.rotation.x -= d * 0.46
+    if (sun.current) sun.current.rotation.x += d
+    if (ring.current) ring.current.rotation.x -= d * (MG2_REDUCTION.sunTeeth / MG2_REDUCTION.ringTeeth)
+    planets.current.forEach((planet) => {
+      planet.rotation.x -= d * (MG2_REDUCTION.sunTeeth / MG2_REDUCTION.planetTeeth)
+    })
   })
   return (
     <Selectable id="reduction" position={[3.65, 0, 0]} explode={[1.05, 0, 0]} labelOffset={[0, 1.7, 0]}>
-      <group ref={fast} position={[-0.25, 0.55, 0]}><Gear radius={0.48} teeth={17} color="#83a0ad" /></group>
-      <group ref={slow} position={[0.35, -0.28, 0]}><Gear radius={0.92} teeth={30} color="#a9b7bd" /></group>
-      <mesh position={[0.35, -0.28, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.13, 0.13, 1.4, 20]} />
-        <meshStandardMaterial color="#cbd3d7" metalness={0.9} roughness={0.18} />
-      </mesh>
+      <group ref={ring}><Gear radius={1.18} width={0.38} teeth={MG2_REDUCTION.ringTeeth} inner color="#a9b7bd" emissive="#073c46" /></group>
+      <group ref={sun}><Gear radius={0.43} width={0.52} teeth={MG2_REDUCTION.sunTeeth} color="#4cb9c8" emissive="#063f49" /></group>
+      <group>
+        {[0, 1, 2].map((index) => {
+          const angle = index / 3 * Math.PI * 2
+          return (
+            <group key={index} rotation={[angle, 0, 0]}>
+              <group ref={(node) => { if (node) planets.current[index] = node }} position={[0, 0.76, 0]}>
+                <Gear radius={0.34} width={0.44} teeth={MG2_REDUCTION.planetTeeth} color="#9eacb3" />
+              </group>
+              <mesh position={[0, 0.76, 0]} rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[0.09, 0.09, 0.8, 18]} />
+                <meshStandardMaterial color="#d35d57" metalness={0.8} roughness={0.25} />
+              </mesh>
+            </group>
+          )
+        })}
+        <mesh rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.24, 0.24, 0.72, 24]} />
+          <meshStandardMaterial color="#6e3030" metalness={0.78} roughness={0.3} />
+        </mesh>
+        <mesh position={[0, -1.38, 0]}>
+          <boxGeometry args={[0.42, 0.55, 0.75]} />
+          <meshStandardMaterial color="#7a3a39" metalness={0.65} roughness={0.35} />
+        </mesh>
+      </group>
     </Selectable>
   )
 }
 
 export function DifferentialAssembly() {
   const diff = useRef<Group>(null)
-  const wheelL = useRef<Mesh>(null)
-  const wheelR = useRef<Mesh>(null)
-  const rpm = useSimulator((state) => state.output.wheelRpm)
+  const wheelL = useRef<Group>(null)
+  const wheelR = useRef<Group>(null)
+  const rpm = useSimulator((state) => state.telemetry.wheelRpm)
+  const cornering = useSimulator((state) => state.activeScenarioId === 'differential-cornering')
   const running = useSimulator((state) => state.running)
   const scale = useSimulator((state) => state.timeScale)
   useFrame((_, delta) => {
     if (!running) return
     const d = rpm * Math.min(delta, 0.05) * scale * VISUAL_RPM_SCALE
-    if (diff.current) diff.current.rotation.z += d
-    if (wheelL.current) wheelL.current.rotation.z += d
-    if (wheelR.current) wheelR.current.rotation.z += d
+    if (diff.current) diff.current.rotation.x += d
+    if (wheelL.current) wheelL.current.rotation.z += d * (cornering ? 0.82 : 1)
+    if (wheelR.current) wheelR.current.rotation.z += d * (cornering ? 1.18 : 1)
   })
   return (
     <group>
       <Selectable id="differential" position={[5.55, -0.25, 0]} explode={[1.2, 0, 0]} labelOffset={[0, 1.55, 0]}>
         <group ref={diff}>
-          <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-            <sphereGeometry args={[0.76, 32, 20]} />
-            <meshStandardMaterial color="#7f8d95" metalness={0.88} roughness={0.24} wireframe={false} />
+          <Gear radius={0.96} width={0.28} teeth={38} color="#b7c0c4" />
+          <mesh rotation={[0, Math.PI / 2, 0]}>
+            <torusGeometry args={[0.58, 0.12, 12, 36]} />
+            <meshStandardMaterial color="#70818a" metalness={0.86} roughness={0.25} />
           </mesh>
-          <Gear radius={0.92} width={0.28} teeth={30} color="#b7c0c4" />
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.38, 0.42, 20]} />
+          {[-0.28, 0.28].map((x) => <mesh key={x} position={[x, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+            <coneGeometry args={[0.34, 0.32, 18]} />
             <meshStandardMaterial color="#d7bd68" metalness={0.78} roughness={0.26} />
+          </mesh>)}
+          {[-0.22, 0.22].map((y) => <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.22, 0.24, 16]} />
+            <meshStandardMaterial color="#aeb8bd" metalness={0.82} roughness={0.24} />
+          </mesh>)}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.07, 0.07, 1.05, 16]} />
+            <meshStandardMaterial color="#c9d2d6" metalness={0.9} roughness={0.18} />
           </mesh>
         </group>
       </Selectable>
@@ -151,15 +184,39 @@ export function DifferentialAssembly() {
           <cylinderGeometry args={[0.1, 0.1, 6.5, 18]} />
           <meshStandardMaterial color="#aeb8bd" metalness={0.88} roughness={0.2} />
         </mesh>
-        <mesh ref={wheelL} position={[0, 0, -3.55]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <torusGeometry args={[0.92, 0.28, 18, 48]} />
-          <meshStandardMaterial color="#171d21" metalness={0.12} roughness={0.72} />
-        </mesh>
-        <mesh ref={wheelR} position={[0, 0, 3.55]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <torusGeometry args={[0.92, 0.28, 18, 48]} />
-          <meshStandardMaterial color="#171d21" metalness={0.12} roughness={0.72} />
-        </mesh>
+        <group ref={wheelL} position={[0, 0, -3.55]}>
+          <mesh castShadow><torusGeometry args={[0.92, 0.28, 18, 48]} /><meshStandardMaterial color="#171d21" metalness={0.12} roughness={0.72} /></mesh>
+          <mesh position={[0, 0, -0.02]}><boxGeometry args={[0.12, 1.35, 0.3]} /><meshStandardMaterial color="#354149" metalness={0.55} roughness={0.4} /></mesh>
+        </group>
+        <group ref={wheelR} position={[0, 0, 3.55]}>
+          <mesh castShadow><torusGeometry args={[0.92, 0.28, 18, 48]} /><meshStandardMaterial color="#171d21" metalness={0.12} roughness={0.72} /></mesh>
+          <mesh position={[0, 0, 0.02]}><boxGeometry args={[0.12, 1.35, 0.3]} /><meshStandardMaterial color="#354149" metalness={0.55} roughness={0.4} /></mesh>
+        </group>
       </Selectable>
+    </group>
+  )
+}
+
+function Shaft({ position, length, axis = 'x', active = false }: { position: [number, number, number]; length: number; axis?: 'x' | 'z'; active?: boolean }) {
+  return (
+    <mesh position={position} rotation={axis === 'x' ? [0, 0, Math.PI / 2] : [Math.PI / 2, 0, 0]}>
+      <cylinderGeometry args={[active ? 0.105 : 0.075, active ? 0.105 : 0.075, length, 18]} />
+      <meshStandardMaterial color={active ? '#66e9ff' : '#8b9da5'} emissive={active ? '#0b6372' : '#000000'} emissiveIntensity={active ? 0.8 : 0} metalness={0.92} roughness={0.18} />
+    </mesh>
+  )
+}
+
+export function MechanicalConnections() {
+  const selected = useSimulator((state) => state.selectedComponent)
+  const powerSplitActive = ['engine', 'carrier', 'planets', 'sun', 'mg1', 'ring'].includes(selected)
+  const outputActive = ['ring', 'mg2', 'reduction', 'differential', 'wheels'].includes(selected)
+  return (
+    <group>
+      <Shaft position={[-4.65, 0, 0]} length={2.9} active={powerSplitActive} />
+      <Shaft position={[-2.05, 0, 0]} length={1.55} active={powerSplitActive} />
+      <Shaft position={[1.25, 0, 0]} length={3.15} active={outputActive} />
+      <Shaft position={[4.75, -0.25, 0]} length={1.6} active={outputActive} />
+      <Shaft position={[5.55, -0.25, 0]} length={6.5} axis="z" active={selected === 'differential' || selected === 'wheels'} />
     </group>
   )
 }

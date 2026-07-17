@@ -20,6 +20,21 @@ const COMPONENT_VIEW: Record<ComponentId, CameraPreset> = {
   inverter: 'electrical',
 }
 
+const CONNECTIONS: Partial<Record<ComponentId, ComponentId[]>> = {
+  engine: ['carrier', 'planets', 'ring', 'mg1'],
+  carrier: ['engine', 'planets', 'sun', 'ring'],
+  planets: ['carrier', 'sun', 'ring'],
+  sun: ['planets', 'mg1', 'carrier'],
+  ring: ['planets', 'carrier', 'reduction', 'differential', 'wheels'],
+  mg1: ['sun', 'engine', 'inverter', 'battery'],
+  mg2: ['reduction', 'inverter', 'battery', 'wheels'],
+  reduction: ['mg2', 'ring', 'differential', 'wheels'],
+  differential: ['ring', 'reduction', 'wheels'],
+  wheels: ['differential', 'ring', 'reduction'],
+  battery: ['inverter', 'mg1', 'mg2'],
+  inverter: ['battery', 'mg1', 'mg2'],
+}
+
 interface Props extends PropsWithChildren {
   id: ComponentId
   position: [number, number, number]
@@ -39,7 +54,7 @@ export function Selectable({ id, position, explode = [0, 0, 0], labelOffset = [0
   const x = position[0] + explode[0] * exploded
   const y = position[1] + explode[1] * exploded
   const z = position[2] + explode[2] * exploded
-  const dimmed = tutorialActive && selected !== id
+  const dimmed = selected !== id && !(CONNECTIONS[selected] ?? []).includes(id)
 
   useEffect(() => {
     content.current?.traverse((object) => {
@@ -81,7 +96,7 @@ export function Selectable({ id, position, explode = [0, 0, 0], labelOffset = [0
           <meshBasicMaterial color="#65e6ff" transparent opacity={0.8} depthWrite={false} />
         </mesh>
       )}
-      {labels && (!tutorialActive || selected === id) && (
+      {labels && (!tutorialActive || selected === id || (CONNECTIONS[selected] ?? []).includes(id)) && (
         <Html position={labelOffset} center distanceFactor={12} zIndexRange={[5, 0]}>
           <button className={`scene-label ${selected === id ? 'is-selected' : ''}`} onClick={() => setSelected(id)}>
             <span>{COMPONENTS[id].name}</span>
