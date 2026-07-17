@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { scenarioById } from '../simulation/scenarios'
 import { useSimulator } from '../state/useSimulator'
 import type { ComponentId, EnergyFlow, FlowId, FlowKind } from '../simulation/types'
+import { fixedCarrierPlanetRpm, powerSplitPlanetRelativeRpm, reductionRingRpm } from '../drivetrain/visualMechanics'
 
 const FLOW_COLORS: Record<FlowKind, string> = {
   engine: '#ff9a4d',
@@ -28,17 +29,17 @@ const FLOW_PATHS: Record<FlowId, string> = {
 }
 
 const MECHANICAL_LINKS: Partial<Record<ComponentId, ComponentId[]>> = {
-  engine: ['carrier', 'planets', 'ring', 'wheels'],
+  engine: ['carrier'],
   carrier: ['engine', 'planets', 'sun', 'ring'],
   planets: ['carrier', 'sun', 'ring'],
   sun: ['mg1', 'planets'],
-  mg1: ['sun', 'inverter', 'battery'],
-  ring: ['planets', 'reduction', 'differential', 'wheels'],
-  mg2: ['reduction', 'inverter', 'battery'],
+  mg1: ['sun', 'inverter'],
+  ring: ['planets', 'carrier', 'sun'],
+  mg2: ['reduction', 'inverter'],
   reduction: ['mg2', 'ring', 'differential'],
-  differential: ['ring', 'reduction', 'wheels'],
-  wheels: ['differential', 'ring'],
-  battery: ['inverter', 'mg1', 'mg2'],
+  differential: ['reduction', 'wheels'],
+  wheels: ['differential'],
+  battery: ['inverter'],
   inverter: ['battery', 'mg1', 'mg2'],
 }
 
@@ -48,16 +49,17 @@ function componentClass(id: ComponentId, selected: ComponentId, connected: Set<C
   return 'schematic-component is-dimmed'
 }
 
-function rotationStyle(rpm: number, running: boolean) {
-  const seconds = Math.max(0.45, Math.min(8, 3_600 / Math.max(120, Math.abs(rpm))))
+function rotationStyle(rpm: number, running: boolean, visualSpeed: number, visualStep: number) {
+  const seconds = Math.max(0.45, Math.min(8, 3_600 / Math.max(120, Math.abs(rpm)))) / visualSpeed
   return {
     animationDuration: `${seconds}s`,
     animationDirection: rpm < 0 ? 'reverse' : 'normal',
-    animationPlayState: running ? 'running' : 'paused',
+    animationPlayState: running && Math.abs(rpm) > 1 ? 'running' : 'paused',
+    animationDelay: `${Math.abs(rpm) > 1 ? -visualStep * seconds / 36 : 0}s`,
   } as React.CSSProperties
 }
 
-function FlowOverlay({ flows, running }: { flows: EnergyFlow[]; running: boolean }) {
+function FlowOverlay({ flows, running, visualSpeed, visualStep }: { flows: EnergyFlow[]; running: boolean; visualSpeed: number; visualStep: number }) {
   const counts = new Map<FlowId, number>()
   return (
     <g className="schematic-flows" aria-label="Calculated signed energy paths">
@@ -77,6 +79,8 @@ function FlowOverlay({ flows, running }: { flows: EnergyFlow[]; running: boolean
               strokeWidth: 3 + Math.min(5, flow.powerKw / 12),
               animationDirection: flow.direction < 0 ? 'reverse' : 'normal',
               animationPlayState: running ? 'running' : 'paused',
+              animationDuration: `${1.1 / visualSpeed}s`,
+              animationDelay: `${-visualStep * 0.08}s`,
             }}
           />
         )
@@ -117,6 +121,8 @@ export function TeachingSchematic() {
   const selected = useSimulator((state) => state.selectedComponent)
   const setSelected = useSimulator((state) => state.setSelectedComponent)
   const running = useSimulator((state) => state.running)
+  const visualSpeed = useSimulator((state) => state.visualSpeed)
+  const visualStep = useSimulator((state) => state.visualStep)
   const energyArrows = useSimulator((state) => state.energyArrows)
   const activeScenarioId = useSimulator((state) => state.activeScenarioId)
   const scenarioElapsedSeconds = useSimulator((state) => state.scenarioElapsedSeconds)
@@ -141,33 +147,35 @@ export function TeachingSchematic() {
           <g className={cls('engine')} onClick={() => setSelected('engine')} role="button" tabIndex={0}>
             <rect x="48" y="215" width="110" height="98" rx="15" />
             <path d="M65 215 V190 H105 V215 M118 215 V190 H146 V215" />
-            <circle className="schematic-rotor" style={rotationStyle(telemetry.engineRpm, running)} cx="135" cy="264" r="16" />
+            <circle className="schematic-rotor" style={rotationStyle(telemetry.engineRpm, running, visualSpeed, visualStep)} cx="135" cy="264" r="16" />
             <text x="103" y="337" textAnchor="middle">ENGINE</text>
             <text x="103" y="355" textAnchor="middle" className="sub-label">carrier input</text>
           </g>
 
           <g className={cls('ring')} onClick={() => setSelected('ring')}>
-            <circle cx="338" cy="264" r="62" className="ring-gear" />
+            <circle cx="338" cy="264" r="62" className="ring-gear schematic-rotor" style={rotationStyle(telemetry.ringRpm, running, visualSpeed, visualStep)} />
             <text x="338" y="349" textAnchor="middle">POWER-SPLIT DEVICE</text>
           </g>
           <g className={cls('sun')} onClick={() => setSelected('sun')}>
-            <circle className="schematic-rotor sun-gear" style={rotationStyle(telemetry.mg1Rpm, running)} cx="338" cy="264" r="18" />
+            <circle className="schematic-rotor sun-gear" style={rotationStyle(telemetry.mg1Rpm, running, visualSpeed, visualStep)} cx="338" cy="264" r="18" />
             <text x="338" y="270" textAnchor="middle" className="gear-letter">S</text>
           </g>
           <g className={cls('planets')} onClick={() => setSelected('planets')}>
-            {[0, 120, 240].map((angle) => {
-              const radians = angle * Math.PI / 180
-              return <circle key={angle} cx={338 + Math.cos(radians) * 39} cy={264 + Math.sin(radians) * 39} r="13" className="planet-gear" />
-            })}
+            <g className="schematic-rotor planet-orbit" style={{ ...rotationStyle(telemetry.carrierRpm, running, visualSpeed, visualStep), transformOrigin: '338px 264px' }}>
+              {[0, 120, 240].map((angle) => {
+                const radians = angle * Math.PI / 180
+                return <circle key={angle} cx={338 + Math.cos(radians) * 39} cy={264 + Math.sin(radians) * 39} r="13" className="planet-gear schematic-rotor" style={rotationStyle(powerSplitPlanetRelativeRpm(telemetry.mg1Rpm, telemetry.carrierRpm), running, visualSpeed, visualStep)} />
+              })}
+            </g>
           </g>
           <g className={cls('carrier')} onClick={() => setSelected('carrier')}>
-            <circle className="carrier-line schematic-rotor" style={rotationStyle(telemetry.carrierRpm, running)} cx="338" cy="264" r="40" />
+            <circle className="carrier-line schematic-rotor" style={rotationStyle(telemetry.carrierRpm, running, visualSpeed, visualStep)} cx="338" cy="264" r="40" />
             <text x="338" y="192" textAnchor="middle" className="sub-label">engine → carrier</text>
           </g>
 
           <g className={cls('mg1')} onClick={() => setSelected('mg1')}>
             <rect x="286" y="74" width="104" height="80" rx="40" />
-            <circle className="schematic-rotor mg1-rotor" style={rotationStyle(telemetry.mg1Rpm, running)} cx="338" cy="114" r="25" />
+            <circle className="schematic-rotor mg1-rotor" style={rotationStyle(telemetry.mg1Rpm, running, visualSpeed, visualStep)} cx="338" cy="114" r="25" />
             <path className="shaft" d="M338 154 V202" />
             <text x="338" y="59" textAnchor="middle">MG1</text>
             <text x="338" y="173" textAnchor="middle" className="sub-label">sun connection</text>
@@ -175,22 +183,24 @@ export function TeachingSchematic() {
 
           <g className={cls('mg2')} onClick={() => setSelected('mg2')}>
             <rect x="560" y="214" width="105" height="100" rx="48" />
-            <circle className="schematic-rotor mg2-rotor" style={rotationStyle(telemetry.mg2Rpm, running)} cx="612" cy="264" r="29" />
+            <circle className="schematic-rotor mg2-rotor" style={rotationStyle(telemetry.mg2Rpm, running, visualSpeed, visualStep)} cx="612" cy="264" r="29" />
             <text x="612" y="199" textAnchor="middle">MG2</text>
             <text x="612" y="334" textAnchor="middle" className="sub-label">traction motor</text>
           </g>
 
           <g className={cls('reduction')} onClick={() => setSelected('reduction')}>
-            <circle cx="752" cy="264" r="58" className="ring-gear reduction-ring" />
-            <circle className="schematic-rotor reduction-sun" style={rotationStyle(telemetry.mg2Rpm, running)} cx="752" cy="264" r="17" />
+            <circle cx="752" cy="264" r="58" className="ring-gear reduction-ring schematic-rotor" style={rotationStyle(reductionRingRpm(telemetry.mg2Rpm), running, visualSpeed, visualStep)} />
+            <circle className="schematic-rotor reduction-sun" style={rotationStyle(telemetry.mg2Rpm, running, visualSpeed, visualStep)} cx="752" cy="264" r="17" />
             {[0, 120, 240].map((angle) => {
               const radians = angle * Math.PI / 180
-              return <circle key={angle} cx={752 + Math.cos(radians) * 37} cy={264 + Math.sin(radians) * 37} r="12" className="planet-gear" />
+              return <circle key={angle} cx={752 + Math.cos(radians) * 37} cy={264 + Math.sin(radians) * 37} r="12" className="planet-gear schematic-rotor" style={rotationStyle(fixedCarrierPlanetRpm(telemetry.mg2Rpm), running, visualSpeed, visualStep)} />
             })}
             <path className="fixed-carrier" d="M752 223 V196 M739 196 H765 M744 190 H760 M749 184 H755" />
             <text x="752" y="349" textAnchor="middle">MG2 REDUCTION</text>
             <text x="752" y="368" textAnchor="middle" className="sub-label">sun 22 · fixed carrier · ring 58</text>
           </g>
+          <text x="338" y="388" textAnchor="middle" className="schematic-speed-sign">C {telemetry.carrierRpm >= 0 ? '+' : '−'}{Math.abs(Math.round(telemetry.carrierRpm))} · S {telemetry.mg1Rpm >= 0 ? '+' : '−'}{Math.abs(Math.round(telemetry.mg1Rpm))} · R {telemetry.ringRpm >= 0 ? '+' : '−'}{Math.abs(Math.round(telemetry.ringRpm))} rpm</text>
+          <text x="752" y="398" textAnchor="middle" className="schematic-speed-sign">SUN {telemetry.mg2Rpm >= 0 ? '+' : '−'}{Math.abs(Math.round(telemetry.mg2Rpm))} · RING {reductionRingRpm(telemetry.mg2Rpm) >= 0 ? '+' : '−'}{Math.abs(Math.round(reductionRingRpm(telemetry.mg2Rpm)))} rpm</text>
 
           <g className={cls('differential')} onClick={() => setSelected('differential')}>
             <circle cx="940" cy="264" r="43" />
@@ -220,7 +230,7 @@ export function TeachingSchematic() {
 
           {telemetry.chargeRequestActive && <g className="charge-latch"><rect x="610" y="487" width="180" height="42" rx="21" /><text x="700" y="513" textAnchor="middle">CHARGE REQUEST LATCHED</text></g>}
           {selector === 'P' && <g className="parking-pawl"><path d="M882 221 l17 23 15-31" /><text x="900" y="198" textAnchor="middle">PARK PAWL</text></g>}
-          {energyArrows && <FlowOverlay flows={telemetry.energyFlows} running={running} />}
+          {energyArrows && <FlowOverlay flows={telemetry.energyFlows} running={running} visualSpeed={visualSpeed} visualStep={visualStep} />}
         </svg>
       </div>
       <div className="schematic-learning-rail">

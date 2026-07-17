@@ -21,8 +21,11 @@ interface SimulatorStore {
   diagnostics: PowerDiagnostics
   activeScenarioId: string | null
   scenarioElapsedSeconds: number
+  lastScenarioCueSeconds: number
   running: boolean
   timeScale: number
+  visualSpeed: number
+  visualStep: number
   visualMode: VisualMode
   developerMode: boolean
   inspectionMode: boolean
@@ -44,6 +47,8 @@ interface SimulatorStore {
   applyScenario: (id: string) => void
   setRunning: (running: boolean) => void
   setTimeScale: (timeScale: number) => void
+  setVisualSpeed: (visualSpeed: number) => void
+  stepMechanism: () => void
   setVisualMode: (mode: VisualMode) => void
   setDeveloperMode: (enabled: boolean) => void
   setInspectionMode: (enabled: boolean) => void
@@ -89,8 +94,11 @@ export const useSimulator = create<SimulatorStore>((set, get) => ({
   diagnostics: initialResult.diagnostics,
   activeScenarioId: null,
   scenarioElapsedSeconds: 0,
+  lastScenarioCueSeconds: -1,
   running: true,
   timeScale: 1,
+  visualSpeed: 0.25,
+  visualStep: 0,
   visualMode: 'schematic',
   developerMode: false,
   inspectionMode: false,
@@ -98,7 +106,7 @@ export const useSimulator = create<SimulatorStore>((set, get) => ({
   exploded: 0,
   labels: true,
   energyArrows: true,
-  rotationArrows: false,
+  rotationArrows: true,
   selectedComponent: 'ring',
   cameraPreset: 'drivetrain',
   tutorialActive: false,
@@ -157,6 +165,7 @@ export const useSimulator = create<SimulatorStore>((set, get) => ({
       diagnostics: prepared.result.diagnostics,
       activeScenarioId: id,
       scenarioElapsedSeconds: 0,
+      lastScenarioCueSeconds: firstCue?.atSeconds ?? -1,
       running: true,
       inspectionMode: false,
       cameraPreset: firstCue?.camera ?? 'drivetrain',
@@ -168,6 +177,8 @@ export const useSimulator = create<SimulatorStore>((set, get) => ({
     set({ running })
   },
   setTimeScale: (timeScale) => set({ timeScale }),
+  setVisualSpeed: (visualSpeed) => set({ visualSpeed }),
+  stepMechanism: () => set((store) => ({ visualStep: store.visualStep + 1 })),
   setVisualMode: (visualMode) => set({ visualMode }),
   setDeveloperMode: (developerMode) => set({ developerMode }),
   setInspectionMode: (inspectionMode) => {
@@ -198,6 +209,7 @@ export const useSimulator = create<SimulatorStore>((set, get) => ({
     const latestCue = scenario?.cameraSequence
       .filter((point) => point.atSeconds <= scenarioElapsedSeconds)
       .sort((a, b) => b.atSeconds - a.atSeconds)[0]
+    const applyLatestCue = Boolean(latestCue && latestCue.atSeconds > store.lastScenarioCueSeconds)
     const chargeDemoComplete = Boolean(
       scenario
       && (scenario.id === 'low-soc-charge' || scenario.id === 'stationary-charge')
@@ -215,9 +227,10 @@ export const useSimulator = create<SimulatorStore>((set, get) => ({
       telemetry: result.telemetry,
       diagnostics: result.diagnostics,
       scenarioElapsedSeconds,
+      lastScenarioCueSeconds: applyLatestCue ? latestCue!.atSeconds : store.lastScenarioCueSeconds,
       running: scenarioComplete ? false : store.running,
-      cameraPreset: latestCue?.camera ?? store.cameraPreset,
-      selectedComponent: latestCue?.component ?? store.selectedComponent,
+      cameraPreset: applyLatestCue && latestCue?.camera ? latestCue.camera : store.cameraPreset,
+      selectedComponent: applyLatestCue && latestCue?.component ? latestCue.component : store.selectedComponent,
     })
   },
   reset: () => {
@@ -231,12 +244,16 @@ export const useSimulator = create<SimulatorStore>((set, get) => ({
       diagnostics: result.diagnostics,
       activeScenarioId: null,
       scenarioElapsedSeconds: 0,
+      lastScenarioCueSeconds: -1,
       running: true,
       timeScale: 1,
+      visualSpeed: 0.25,
+      visualStep: 0,
       visualMode: 'schematic',
       developerMode: false,
       inspectionMode: false,
       exploded: 0,
+      rotationArrows: true,
       selectedComponent: 'ring',
       cameraPreset: 'drivetrain',
       tutorialActive: false,

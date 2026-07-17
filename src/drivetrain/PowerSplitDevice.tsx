@@ -1,29 +1,27 @@
-import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group } from 'three'
-import { POWER_SPLIT, VISUAL_RPM_SCALE } from '../simulation/constants'
+import { POWER_SPLIT } from '../simulation/constants'
 import { useSimulator } from '../state/useSimulator'
 import { Gear } from './Gear'
 import { Selectable } from './Selectable'
+import { useMechanicalMotion } from './useMechanicalMotion'
+import { powerSplitPlanetRelativeRpm } from './visualMechanics'
 
 export function PowerSplitDevice() {
   const sunPivot = useRef<Group>(null)
   const ringPivot = useRef<Group>(null)
   const carrierPivot = useRef<Group>(null)
+  const planetOrbitPivot = useRef<Group>(null)
   const planetSpinPivots = useRef<Group[]>([])
   const telemetry = useSimulator((state) => state.telemetry)
-  const running = useSimulator((state) => state.running)
-  const timeScale = useSimulator((state) => state.timeScale)
 
-  useFrame((_, delta) => {
-    if (!running) return
-    const dt = Math.min(delta, 0.05) * timeScale * VISUAL_RPM_SCALE
-    if (sunPivot.current) sunPivot.current.rotation.x += telemetry.mg1Rpm * dt
-    if (ringPivot.current) ringPivot.current.rotation.x += telemetry.ringRpm * dt
-    if (carrierPivot.current) carrierPivot.current.rotation.x += telemetry.carrierRpm * dt
-    const relativePlanetRpm = -(telemetry.mg1Rpm - telemetry.carrierRpm)
-      * (POWER_SPLIT.sunTeeth / POWER_SPLIT.planetTeeth)
-    planetSpinPivots.current.forEach((planet) => { planet.rotation.x += relativePlanetRpm * dt })
+  useMechanicalMotion((rotationForRpm) => {
+    if (sunPivot.current) sunPivot.current.rotation.x += rotationForRpm(telemetry.mg1Rpm)
+    if (ringPivot.current) ringPivot.current.rotation.x += rotationForRpm(telemetry.ringRpm)
+    if (carrierPivot.current) carrierPivot.current.rotation.x += rotationForRpm(telemetry.carrierRpm)
+    if (planetOrbitPivot.current) planetOrbitPivot.current.rotation.x += rotationForRpm(telemetry.carrierRpm)
+    const relativePlanetRpm = powerSplitPlanetRelativeRpm(telemetry.mg1Rpm, telemetry.carrierRpm)
+    planetSpinPivots.current.forEach((planet) => { planet.rotation.x += rotationForRpm(relativePlanetRpm) })
   })
 
   return (
@@ -42,6 +40,10 @@ export function PowerSplitDevice() {
               <meshStandardMaterial color="#d28b35" metalness={0.82} roughness={0.3} />
             </mesh>
           </group>
+          <mesh position={[0.38, 0.18, 0]}>
+            <boxGeometry args={[0.08, 0.34, 0.12]} />
+            <meshBasicMaterial color="#ffca72" toneMapped={false} />
+          </mesh>
           <group name="carrierPins">
             {[0, 1, 2].map((index) => {
               const angle = index / 3 * Math.PI * 2
@@ -59,24 +61,24 @@ export function PowerSplitDevice() {
               )
             })}
           </group>
-          <Selectable id="planets" position={[0, 0, 0]} explode={[0, 0, 0]} labelOffset={[0, 1.2, 0]}>
-            <group name="planetOrbitPivots">
-              {[0, 1, 2].map((index) => {
-                const angle = index / 3 * Math.PI * 2
-                return (
-                  <group key={index} rotation={[angle, 0, 0]}>
-                    <group
-                      name="planetSpinPivot"
-                      ref={(node) => { if (node) planetSpinPivots.current[index] = node }}
-                      position={[0, 0.75, 0]}
-                    >
-                      <Gear radius={0.30} width={0.42} teeth={POWER_SPLIT.planetTeeth} color="#bbc3c8" />
-                    </group>
-                  </group>
-                )
-              })}
-            </group>
-          </Selectable>
+        </group>
+      </Selectable>
+      <Selectable id="planets" position={[-1, 0, 0]} explode={[0.62, 0, 0]} labelOffset={[0, 1.2, 0]}>
+        <group ref={planetOrbitPivot} name="planetOrbitPivots">
+          {[0, 1, 2].map((index) => {
+            const angle = index / 3 * Math.PI * 2
+            return (
+              <group key={index} rotation={[angle, 0, 0]}>
+                <group
+                  name="planetSpinPivot"
+                  ref={(node) => { if (node) planetSpinPivots.current[index] = node }}
+                  position={[0, 0.75, 0]}
+                >
+                  <Gear radius={0.30} width={0.42} teeth={POWER_SPLIT.planetTeeth} color="#bbc3c8" />
+                </group>
+              </group>
+            )
+          })}
         </group>
       </Selectable>
     </group>

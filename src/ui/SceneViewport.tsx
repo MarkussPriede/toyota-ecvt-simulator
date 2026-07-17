@@ -2,12 +2,12 @@ import { Canvas } from '@react-three/fiber'
 import { Box, Crosshair, Maximize2, Rotate3D, Waypoints } from 'lucide-react'
 import { DrivetrainScene } from '../scenes/DrivetrainScene'
 import { useSimulator } from '../state/useSimulator'
-import type { CameraPreset } from '../simulation/types'
+import type { CameraPreset, ComponentId } from '../simulation/types'
 import { TeachingSchematic } from './TeachingSchematic'
 
-const VIEWS: { id: CameraPreset; label: string }[] = [
-  { id: 'drivetrain', label: 'Full' }, { id: 'planetary', label: 'Power split' }, { id: 'mg1', label: 'MG1' },
-  { id: 'mg2', label: 'MG2' }, { id: 'differential', label: 'Differential' }, { id: 'electrical', label: 'Electrical' },
+const VIEWS: { id: CameraPreset; label: string; component?: ComponentId }[] = [
+  { id: 'drivetrain', label: 'Full' }, { id: 'planetary', label: 'Power split', component: 'ring' }, { id: 'mg1', label: 'MG1', component: 'mg1' },
+  { id: 'mg2', label: 'MG2 reduction', component: 'reduction' }, { id: 'differential', label: 'Differential', component: 'differential' }, { id: 'electrical', label: 'Electrical', component: 'inverter' },
 ]
 
 function webGlAvailable() {
@@ -24,6 +24,7 @@ export function SceneViewport() {
   const setVisualMode = useSimulator((state) => state.setVisualMode)
   const cameraPreset = useSimulator((state) => state.cameraPreset)
   const setCameraPreset = useSimulator((state) => state.setCameraPreset)
+  const setSelectedComponent = useSimulator((state) => state.setSelectedComponent)
   const quality = useSimulator((state) => state.quality)
   const setQuality = useSimulator((state) => state.setQuality)
   const hasWebGl = webGlAvailable()
@@ -49,7 +50,7 @@ export function SceneViewport() {
         <>
           <div className="view-toolbar" role="group" aria-label="Camera preset views">
             <span><Crosshair size={14} /> View</span>
-            {VIEWS.map((view) => <button key={view.id} className={cameraPreset === view.id ? 'active' : ''} aria-pressed={cameraPreset === view.id} onClick={() => setCameraPreset(view.id)}>{view.label}</button>)}
+            {VIEWS.map((view) => <button key={view.id} className={cameraPreset === view.id ? 'active' : ''} aria-pressed={cameraPreset === view.id} onClick={() => { setCameraPreset(view.id); if (view.component) setSelectedComponent(view.component) }}>{view.label}</button>)}
           </div>
           <div className="viewport-hint"><Rotate3D size={15} /> Drag to orbit · scroll to zoom · right-drag to pan</div>
           <label className="quality-control"><Maximize2 size={14} /> <select value={quality} onChange={(event) => setQuality(event.target.value as typeof quality)}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>

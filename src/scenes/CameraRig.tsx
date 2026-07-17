@@ -8,7 +8,7 @@ const VIEWS = {
   drivetrain: { camera: [13, 8, 14], target: [0, 0.4, 0] },
   planetary: { camera: [5.8, 3.2, 6.8], target: [-1, 0, 0] },
   mg1: { camera: [1.8, 2.7, 6.2], target: [-3.25, 0, 0] },
-  mg2: { camera: [7.2, 3.0, 6.3], target: [1.7, 0, 0] },
+  mg2: { camera: [8.3, 3.0, 6.5], target: [3.15, 0, 0] },
   differential: { camera: [10.5, 3.8, 7.5], target: [5.4, -0.2, 0] },
   electrical: { camera: [7.0, 8.4, 9.6], target: [0.8, 2.2, -1.5] },
 } as const

@@ -1,4 +1,4 @@
-import { ChevronDown, Eye, EyeOff, FlaskConical, Gauge, Pause, Play, RotateCcw, Thermometer, Timer, Zap } from 'lucide-react'
+import { ChevronDown, Eye, EyeOff, FlaskConical, Gauge, Pause, Play, RotateCcw, StepForward, Thermometer, Timer, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { BATTERY, maxVehicleSpeedMps } from '../simulation/constants'
@@ -31,6 +31,7 @@ export function ControlsPanel() {
     engineTemperatureC: state.simulation.engineTemperatureC,
     running: state.running,
     timeScale: state.timeScale,
+    visualSpeed: state.visualSpeed,
     visualMode: state.visualMode,
     developerMode: state.developerMode,
     inspectionMode: state.inspectionMode,
@@ -44,6 +45,7 @@ export function ControlsPanel() {
     setInput: state.setInput, setBatterySoc: state.setBatterySoc, setEngineTemperature: state.setEngineTemperature,
     setInspectionSpeedKph: state.setInspectionSpeedKph, setSelector: state.setSelector, setRunning: state.setRunning,
     setTimeScale: state.setTimeScale, setDeveloperMode: state.setDeveloperMode, setInspectionMode: state.setInspectionMode,
+    setVisualSpeed: state.setVisualSpeed, stepMechanism: state.stepMechanism,
     setHousingOpacity: state.setHousingOpacity, setExploded: state.setExploded, setLabels: state.setLabels,
     setEnergyArrows: state.setEnergyArrows, setRotationArrows: state.setRotationArrows, reset: state.reset,
   })))
@@ -94,7 +96,12 @@ export function ControlsPanel() {
           <button className="icon-button" onClick={actions.reset} aria-label="Reset simulation"><RotateCcw size={16} /></button>
           {[0.25, 0.5, 1, 2].map((speed) => <button key={speed} className={`speed-button ${values.timeScale === speed ? 'active' : ''}`} aria-pressed={values.timeScale === speed} onClick={() => actions.setTimeScale(speed)}>{speed}×</button>)}
         </div>
-        <p className="micro-note"><Zap size={13} /> Pause freezes physics, timers, mechanical rotation, and energy particles.</p>
+        <div className="section-label mechanism-speed-label"><span>Mechanism visual speed</span><small>physics unchanged</small></div>
+        <div className="transport-row">
+          {[0.1, 0.25, 0.5, 1].map((speed) => <button key={speed} className={`speed-button ${values.visualSpeed === speed ? 'active' : ''}`} aria-pressed={values.visualSpeed === speed} onClick={() => actions.setVisualSpeed(speed)}>{speed}×</button>)}
+          <button className="icon-button" onClick={actions.stepMechanism} aria-label="Step mechanism movement" title="Advance visible movement without advancing physics"><StepForward size={16} /></button>
+        </div>
+        <p className="micro-note"><Zap size={13} /> Physics speed and visual slow-motion are independent. Step advances only the mechanism view.</p>
       </section>
 
       <section className="control-section switches">

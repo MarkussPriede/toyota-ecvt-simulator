@@ -1,10 +1,12 @@
-import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group } from 'three'
-import { MG2_REDUCTION, VISUAL_RPM_SCALE } from '../simulation/constants'
+import { Html, Line } from '@react-three/drei'
+import { DRIVETRAIN, MG2_REDUCTION } from '../simulation/constants'
 import { useSimulator } from '../state/useSimulator'
 import { Gear } from './Gear'
 import { Selectable } from './Selectable'
+import { useMechanicalMotion } from './useMechanicalMotion'
+import { fixedCarrierPlanetRpm, reductionRingRpm } from './visualMechanics'
 
 function Stator({ radius, length, color }: { radius: number; length: number; color: string }) {
   return (
@@ -29,10 +31,8 @@ function Stator({ radius, length, color }: { radius: number; length: number; col
 export function EngineAssembly() {
   const shaft = useRef<Group>(null)
   const rpm = useSimulator((state) => state.telemetry.engineRpm)
-  const running = useSimulator((state) => state.running)
-  const scale = useSimulator((state) => state.timeScale)
-  useFrame((_, delta) => {
-    if (shaft.current && running) shaft.current.rotation.x += rpm * Math.min(delta, 0.05) * scale * VISUAL_RPM_SCALE
+  useMechanicalMotion((rotationForRpm) => {
+    if (shaft.current) shaft.current.rotation.x += rotationForRpm(rpm)
   })
   return (
     <Selectable id="engine" position={[-6.1, 0, 0]} explode={[-1.3, 0, 0]} labelOffset={[0, 1.8, 0]}>
@@ -57,6 +57,7 @@ export function EngineAssembly() {
             <meshStandardMaterial color="#d48230" metalness={0.9} roughness={0.18} emissive="#6a2f05" emissiveIntensity={0.3} />
           </mesh>
           <mesh position={[1.0, 0, 0]}><Gear radius={0.48} width={0.24} teeth={18} color="#c77b2d" /></mesh>
+          <mesh position={[1.75, 0.21, 0]}><boxGeometry args={[0.26, 0.08, 0.12]} /><meshBasicMaterial color="#ffd07a" toneMapped={false} /></mesh>
         </group>
       </group>
     </Selectable>
@@ -66,13 +67,11 @@ export function EngineAssembly() {
 export function MotorAssembly({ kind }: { kind: 'mg1' | 'mg2' }) {
   const rotor = useRef<Group>(null)
   const output = useSimulator((state) => state.telemetry)
-  const running = useSimulator((state) => state.running)
-  const scale = useSimulator((state) => state.timeScale)
   const isMg1 = kind === 'mg1'
   const position: [number, number, number] = isMg1 ? [-3.25, 0, 0] : [1.7, 0, 0]
   const rpm = isMg1 ? output.mg1Rpm : output.mg2Rpm
-  useFrame((_, delta) => {
-    if (rotor.current && running) rotor.current.rotation.x += rpm * Math.min(delta, 0.05) * scale * VISUAL_RPM_SCALE
+  useMechanicalMotion((rotationForRpm) => {
+    if (rotor.current) rotor.current.rotation.x += rotationForRpm(rpm)
   })
   return (
     <Selectable id={kind} position={position} explode={isMg1 ? [-0.8, 0, 0] : [0.9, 0, 0]} labelOffset={[0, 1.45, 0]}>
@@ -87,6 +86,7 @@ export function MotorAssembly({ kind }: { kind: 'mg1' | 'mg2' }) {
             <cylinderGeometry args={[0.12, 0.12, 2.15, 20]} />
             <meshStandardMaterial color="#d6dce0" metalness={0.92} roughness={0.17} />
           </mesh>
+          <mesh position={[0.88, isMg1 ? 0.58 : 0.7, 0]}><boxGeometry args={[0.12, 0.08, 0.18]} /><meshBasicMaterial color={isMg1 ? '#e4d5ff' : '#baf8ff'} toneMapped={false} /></mesh>
         </group>
       </group>
     </Selectable>
@@ -98,15 +98,12 @@ export function ReductionAssembly() {
   const ring = useRef<Group>(null)
   const planets = useRef<Group[]>([])
   const rpm = useSimulator((state) => state.telemetry.mg2Rpm)
-  const running = useSimulator((state) => state.running)
-  const scale = useSimulator((state) => state.timeScale)
-  useFrame((_, delta) => {
-    if (!running) return
-    const d = rpm * Math.min(delta, 0.05) * scale * VISUAL_RPM_SCALE
-    if (sun.current) sun.current.rotation.x += d
-    if (ring.current) ring.current.rotation.x -= d * (MG2_REDUCTION.sunTeeth / MG2_REDUCTION.ringTeeth)
+  const selected = useSimulator((state) => state.selectedComponent === 'reduction')
+  useMechanicalMotion((rotationForRpm) => {
+    if (sun.current) sun.current.rotation.x += rotationForRpm(rpm)
+    if (ring.current) ring.current.rotation.x += rotationForRpm(reductionRingRpm(rpm))
     planets.current.forEach((planet) => {
-      planet.rotation.x -= d * (MG2_REDUCTION.sunTeeth / MG2_REDUCTION.planetTeeth)
+      planet.rotation.x += rotationForRpm(fixedCarrierPlanetRpm(rpm))
     })
   })
   return (
@@ -137,30 +134,42 @@ export function ReductionAssembly() {
           <meshStandardMaterial color="#7a3a39" metalness={0.65} roughness={0.35} />
         </mesh>
       </group>
+      {selected && <>
+        <Line points={[[0, 0, 0], [0, 0.45, 0.9]]} color="#4ba8ff" lineWidth={1} />
+        <Html position={[0, 0.45, 0.9]} center distanceFactor={12}><span className="gearset-label sun">SUN 22 · MG2</span></Html>
+        <Line points={[[0, 0.76, 0], [0, 1.25, 0.65]]} color="#d4dde1" lineWidth={1} />
+        <Html position={[0, 1.25, 0.65]} center distanceFactor={12}><span className="gearset-label">PLANETS · SELF-SPIN</span></Html>
+        <Line points={[[0, -1.1, 0], [0, -1.42, 0.72]]} color="#50e5f2" lineWidth={1} />
+        <Html position={[0, -1.42, 0.72]} center distanceFactor={12}><span className="gearset-label ring">RING 58 · OUTPUT</span></Html>
+        <Line points={[[0, -0.35, 0], [0, -0.72, 0.92]]} color="#ff7277" lineWidth={1} />
+        <Html position={[0, -0.72, 0.92]} center distanceFactor={12}><span className="gearset-label fixed">CARRIER · FIXED</span></Html>
+      </>}
     </Selectable>
   )
 }
 
 export function DifferentialAssembly() {
   const diff = useRef<Group>(null)
+  const finalDrivePinion = useRef<Group>(null)
   const wheelL = useRef<Group>(null)
   const wheelR = useRef<Group>(null)
   const rpm = useSimulator((state) => state.telemetry.wheelRpm)
   const cornering = useSimulator((state) => state.activeScenarioId === 'differential-cornering')
-  const running = useSimulator((state) => state.running)
-  const scale = useSimulator((state) => state.timeScale)
-  useFrame((_, delta) => {
-    if (!running) return
-    const d = rpm * Math.min(delta, 0.05) * scale * VISUAL_RPM_SCALE
-    if (diff.current) diff.current.rotation.x += d
-    if (wheelL.current) wheelL.current.rotation.z += d * (cornering ? 0.82 : 1)
-    if (wheelR.current) wheelR.current.rotation.z += d * (cornering ? 1.18 : 1)
+  useMechanicalMotion((rotationForRpm) => {
+    if (diff.current) diff.current.rotation.x += rotationForRpm(rpm)
+    if (finalDrivePinion.current) finalDrivePinion.current.rotation.x += rotationForRpm(-rpm * DRIVETRAIN.finalDriveRatio)
+    if (wheelL.current) wheelL.current.rotation.z += rotationForRpm(rpm * (cornering ? 0.82 : 1))
+    if (wheelR.current) wheelR.current.rotation.z += rotationForRpm(rpm * (cornering ? 1.18 : 1))
   })
   return (
     <group>
       <Selectable id="differential" position={[5.55, -0.25, 0]} explode={[1.2, 0, 0]} labelOffset={[0, 1.55, 0]}>
-        <group ref={diff}>
-          <Gear radius={0.96} width={0.28} teeth={38} color="#b7c0c4" />
+        <group ref={finalDrivePinion} position={[-0.82, 0, 0]}>
+          <Gear radius={0.34} width={0.32} teeth={14} color="#8fa1a9" markerColor="#ffca72" />
+        </group>
+        <group rotation={[0, -Math.PI / 2, 0]}>
+          <group ref={diff}>
+            <Gear radius={0.96} width={0.28} teeth={38} color="#b7c0c4" markerColor="#58e7ff" />
           <mesh rotation={[0, Math.PI / 2, 0]}>
             <torusGeometry args={[0.58, 0.12, 12, 36]} />
             <meshStandardMaterial color="#70818a" metalness={0.86} roughness={0.25} />
@@ -173,10 +182,11 @@ export function DifferentialAssembly() {
             <coneGeometry args={[0.22, 0.24, 16]} />
             <meshStandardMaterial color="#aeb8bd" metalness={0.82} roughness={0.24} />
           </mesh>)}
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.07, 0.07, 1.05, 16]} />
-            <meshStandardMaterial color="#c9d2d6" metalness={0.9} roughness={0.18} />
-          </mesh>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.07, 0.07, 1.05, 16]} />
+              <meshStandardMaterial color="#c9d2d6" metalness={0.9} roughness={0.18} />
+            </mesh>
+          </group>
         </group>
       </Selectable>
       <Selectable id="wheels" position={[5.55, -0.25, 0]} explode={[1.5, 0, 0]} labelOffset={[0, 2.1, 0]}>
@@ -197,11 +207,11 @@ export function DifferentialAssembly() {
   )
 }
 
-function Shaft({ position, length, axis = 'x', active = false }: { position: [number, number, number]; length: number; axis?: 'x' | 'z'; active?: boolean }) {
+function Shaft({ position, length, axis = 'x', active = false, color = '#8b9da5', radius = 0.075 }: { position: [number, number, number]; length: number; axis?: 'x' | 'z'; active?: boolean; color?: string; radius?: number }) {
   return (
     <mesh position={position} rotation={axis === 'x' ? [0, 0, Math.PI / 2] : [Math.PI / 2, 0, 0]}>
-      <cylinderGeometry args={[active ? 0.105 : 0.075, active ? 0.105 : 0.075, length, 18]} />
-      <meshStandardMaterial color={active ? '#66e9ff' : '#8b9da5'} emissive={active ? '#0b6372' : '#000000'} emissiveIntensity={active ? 0.8 : 0} metalness={0.92} roughness={0.18} />
+      <cylinderGeometry args={[active ? radius * 1.18 : radius, active ? radius * 1.18 : radius, length, 18]} />
+      <meshStandardMaterial color={active ? '#dffaff' : color} emissive={active ? color : '#000000'} emissiveIntensity={active ? 0.72 : 0} metalness={0.92} roughness={0.18} />
     </mesh>
   )
 }
@@ -212,11 +222,13 @@ export function MechanicalConnections() {
   const outputActive = ['ring', 'mg2', 'reduction', 'differential', 'wheels'].includes(selected)
   return (
     <group>
-      <Shaft position={[-4.65, 0, 0]} length={2.9} active={powerSplitActive} />
-      <Shaft position={[-2.05, 0, 0]} length={1.55} active={powerSplitActive} />
-      <Shaft position={[1.25, 0, 0]} length={3.15} active={outputActive} />
-      <Shaft position={[4.75, -0.25, 0]} length={1.6} active={outputActive} />
-      <Shaft position={[5.55, -0.25, 0]} length={6.5} axis="z" active={selected === 'differential' || selected === 'wheels'} />
+      <Shaft position={[-3.0, 0.13, 0]} length={2.8} active={powerSplitActive} color="#d88436" radius={0.11} />
+      <Shaft position={[-2.18, -0.13, 0]} length={2.2} active={selected === 'sun' || selected === 'mg1'} color="#a986ff" radius={0.075} />
+      <Shaft position={[0.15, 0.12, 0]} length={2.3} active={outputActive} color="#50e5f2" radius={0.10} />
+      <Shaft position={[2.68, -0.12, 0]} length={1.95} active={selected === 'mg2' || selected === 'reduction'} color="#4ba8ff" radius={0.08} />
+      <Shaft position={[4.72, -0.25, 0]} length={1.55} active={outputActive} color="#aab7bd" radius={0.08} />
+      <Shaft position={[5.55, -0.25, -1.8]} length={2.8} axis="z" active={selected === 'differential' || selected === 'wheels'} color="#c8d0d4" radius={0.09} />
+      <Shaft position={[5.55, -0.25, 1.8]} length={2.8} axis="z" active={selected === 'differential' || selected === 'wheels'} color="#c8d0d4" radius={0.09} />
     </group>
   )
 }

@@ -1,52 +1,29 @@
 import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
-import { CatmullRomCurve3, Color, InstancedMesh, Object3D, Vector3 } from 'three'
-import { useSimulator } from '../state/useSimulator'
+import { BufferGeometry, CatmullRomCurve3, Color, Float32BufferAttribute, Group, InstancedMesh, Object3D, Vector3 } from 'three'
 import type { ComponentId, FlowId, FlowKind } from '../simulation/types'
+import { useSimulator } from '../state/useSimulator'
+import { useDrivetrainAnchors } from './DrivetrainAnchors'
 
 const COLORS: Record<FlowKind, string> = {
   engine: '#ff8b38', battery: '#4ba8ff', regen: '#4ee39b', mg1: '#a986ff', mg2: '#50e5f2', loss: '#ff666b',
 }
 
-const LAYOUT: Record<ComponentId, { position: [number, number, number]; explode: [number, number, number] }> = {
-  engine: { position: [-6.1, 0, 0], explode: [-1.3, 0, 0] },
-  mg1: { position: [-3.25, 0, 0], explode: [-0.8, 0, 0] },
-  mg2: { position: [1.7, 0, 0], explode: [0.9, 0, 0] },
-  sun: { position: [-1, 0, 0], explode: [-0.55, 0, 0] },
-  carrier: { position: [-1, 0, 0], explode: [0.62, 0, 0] },
-  planets: { position: [-1, 0, 0], explode: [0.62, 0, 0] },
-  ring: { position: [-1, 0, 0], explode: [0.3, 0, 0] },
-  reduction: { position: [3.65, 0, 0], explode: [1.05, 0, 0] },
-  differential: { position: [5.55, -0.25, 0], explode: [1.2, 0, 0] },
-  wheels: { position: [5.55, -0.25, 0], explode: [1.5, 0, 0] },
-  battery: { position: [-0.3, 3.25, -2.7], explode: [0, 1, -0.7] },
-  inverter: { position: [2.6, 2.75, -2.25], explode: [0.5, 1.1, -0.8] },
-}
-
 type Anchor = [ComponentId, [number, number, number]]
 
 const ROUTES: Record<FlowId, Anchor[]> = {
-  'engine-planetary': [['engine', [1.15, .55, .65]], ['engine', [1.8, .65, .65]], ['carrier', [-.6, .8, .55]], ['carrier', [0, .65, .5]]],
-  'planetary-output': [['ring', [.4, -.7, .55]], ['mg2', [-.2, -1.25, .55]], ['reduction', [0, -1.25, .45]], ['differential', [-.2, -.7, .35]]],
-  'output-wheels': [['reduction', [.2, -1.2, .4]], ['differential', [0, -.8, .35]], ['wheels', [0, -.5, 2.9]], ['wheels', [0, 0, 3.5]]],
-  'battery-inverter': [['battery', [.3, .25, .65]], ['battery', [1.5, .45, .5]], ['inverter', [-.9, .2, .4]], ['inverter', [0, 0, .5]]],
-  'inverter-mg2': [['inverter', [0, 0, .5]], ['inverter', [.2, -.8, .5]], ['mg2', [.2, .7, .4]], ['mg2', [0, .4, .5]]],
-  'mg1-inverter': [['mg1', [0, .7, -.6]], ['mg1', [.4, 1.4, -.8]], ['inverter', [-.7, -.4, .4]], ['inverter', [0, 0, .5]]],
-  'inverter-mg1': [['inverter', [0, 0, .5]], ['inverter', [-.7, -.4, .4]], ['mg1', [.4, 1.4, -.8]], ['mg1', [0, .7, -.6]]],
-  'mg1-engine': [['mg1', [-.4, .55, .55]], ['mg1', [-.9, .7, .55]], ['engine', [1.5, .7, .55]], ['engine', [.9, .45, .45]]],
-  'wheels-mg2': [['wheels', [0, 0, 3.5]], ['wheels', [0, -.5, 2.9]], ['differential', [0, -.8, .35]], ['reduction', [0, -1.2, .4]], ['mg2', [.3, -.6, .4]]],
-  'inverter-battery': [['inverter', [0, 0, .5]], ['inverter', [-.9, .2, .4]], ['battery', [1.5, .45, .5]], ['battery', [.3, .25, .65]]],
-  'drivetrain-engine': [['wheels', [0, 0, 3.5]], ['differential', [0, -.8, .35]], ['ring', [.4, -.7, .55]], ['engine', [1.15, .55, .65]]],
-  'friction-brakes': [['differential', [0, -.4, 0]], ['wheels', [0, -.4, 2.8]], ['wheels', [0, 0, 3.5]]],
-}
-
-function resolveAnchor([component, local]: Anchor, exploded: number) {
-  const layout = LAYOUT[component]
-  return new Vector3(
-    layout.position[0] + layout.explode[0] * exploded + local[0],
-    layout.position[1] + layout.explode[1] * exploded + local[1],
-    layout.position[2] + layout.explode[2] * exploded + local[2],
-  )
+  'engine-planetary': [['engine', [1.0, .58, .62]], ['carrier', [0, .64, .52]]],
+  'planetary-output': [['ring', [.35, -.72, .54]], ['reduction', [-.25, -.95, .45]], ['differential', [-.2, -.68, .35]]],
+  'output-wheels': [['differential', [0, -.68, .35]], ['wheels', [0, -.45, 2.95]], ['wheels', [0, 0, 3.5]]],
+  'battery-inverter': [['battery', [.3, .25, .65]], ['inverter', [0, 0, .55]]],
+  'inverter-mg2': [['inverter', [0, 0, .55]], ['mg2', [0, .48, .5]]],
+  'mg1-inverter': [['mg1', [0, .7, -.6]], ['inverter', [0, 0, .55]]],
+  'inverter-mg1': [['inverter', [0, 0, .55]], ['mg1', [0, .7, -.6]]],
+  'mg1-engine': [['mg1', [-.4, .55, .55]], ['engine', [.9, .48, .48]]],
+  'wheels-mg2': [['wheels', [0, 0, 3.5]], ['differential', [0, -.68, .35]], ['reduction', [0, -.95, .42]], ['mg2', [.3, -.58, .42]]],
+  'inverter-battery': [['inverter', [0, 0, .55]], ['battery', [.3, .25, .65]]],
+  'drivetrain-engine': [['wheels', [0, 0, 3.5]], ['differential', [0, -.68, .35]], ['ring', [.35, -.72, .54]], ['engine', [1.0, .58, .62]]],
+  'friction-brakes': [['differential', [0, -.4, 0]], ['wheels', [0, -.4, 2.9]], ['wheels', [0, 0, 3.5]]],
 }
 
 interface FlowPathProps {
@@ -58,42 +35,72 @@ interface FlowPathProps {
 }
 
 function FlowPath({ id, kind, powerKw, direction, instanceIndex }: FlowPathProps) {
-  const exploded = useSimulator((state) => state.exploded)
+  const anchors = useDrivetrainAnchors()
   const running = useSimulator((state) => state.running)
-  const timeScale = useSimulator((state) => state.timeScale)
-  const curve = useMemo(() => {
-    const offset = instanceIndex * 0.045
-    const points = ROUTES[id].map((anchor) => resolveAnchor(anchor, exploded).add(new Vector3(0, offset, offset)))
-    return new CatmullRomCurve3(points)
-  }, [exploded, id, instanceIndex])
+  const visualSpeed = useSimulator((state) => state.visualSpeed)
+  const visualStep = useSimulator((state) => state.visualStep)
+  const root = useRef<Group>(null)
+  const lineGeometry = useRef<BufferGeometry>(null)
   const movers = useRef<InstancedMesh>(null)
+  const previousStep = useRef(visualStep)
   const phase = useRef(0)
+  const initialized = useRef(false)
   const dummy = useMemo(() => new Object3D(), [])
-  const speed = 0.1 + Math.min(powerKw / 60, 1) * 0.25
   const color = useMemo(() => new Color(COLORS[kind]), [kind])
-  const radius = 0.018 + Math.min(powerKw / 60, 1) * 0.022
+  const speed = 0.1 + Math.min(powerKw / 60, 1) * 0.25
+  const radius = 0.026 + Math.min(powerKw / 60, 1) * 0.025
   const particleCount = 6
 
   useFrame((_, delta) => {
-    if (!running || !movers.current) return
-    phase.current = (phase.current + delta * speed * direction * timeScale + 1) % 1
-    for (let index = 0; index < particleCount; index += 1) {
-      const t = (phase.current + index / particleCount + 1) % 1
-      dummy.position.copy(curve.getPointAt(t))
-      dummy.updateMatrix()
-      movers.current.setMatrixAt(index, dummy.matrix)
+    if (!anchors || !root.current || !lineGeometry.current || !movers.current) return
+    root.current.updateWorldMatrix(true, false)
+    const route = ROUTES[id]
+    const points: Vector3[] = []
+    for (const [component, local] of route) {
+      const object = anchors.objects.get(component)
+      if (!object) return
+      object.updateWorldMatrix(true, false)
+      const point = object.localToWorld(new Vector3(...local))
+      root.current.worldToLocal(point)
+      point.y += instanceIndex * 0.045
+      point.z += instanceIndex * 0.045
+      points.push(point)
     }
-    movers.current.instanceMatrix.needsUpdate = true
+    if (points.length === 2) {
+      const midpoint = points[0].clone().lerp(points[1], 0.5)
+      midpoint.y += Math.min(0.8, points[0].distanceTo(points[1]) * 0.12)
+      points.splice(1, 0, midpoint)
+    }
+    const curve = new CatmullRomCurve3(points)
+    const samples = curve.getPoints(48)
+    lineGeometry.current.setAttribute('position', new Float32BufferAttribute(samples.flatMap((point) => [point.x, point.y, point.z]), 3))
+    lineGeometry.current.computeBoundingSphere()
+
+    const stepDelta = visualStep - previousStep.current
+    previousStep.current = visualStep
+    if (running) phase.current = (phase.current + delta * speed * direction * visualSpeed + 1) % 1
+    if (stepDelta !== 0) phase.current = (phase.current + stepDelta * direction / particleCount + 1) % 1
+    // Matrix initialization is intentionally outside the running guard, so paused paths never show particles at the origin.
+    if (running || stepDelta !== 0 || !initialized.current) {
+      for (let index = 0; index < particleCount; index += 1) {
+        const t = (phase.current + index / particleCount + 1) % 1
+        dummy.position.copy(curve.getPointAt(t))
+        dummy.updateMatrix()
+        movers.current.setMatrixAt(index, dummy.matrix)
+      }
+      movers.current.instanceMatrix.needsUpdate = true
+      initialized.current = true
+    }
   })
 
   return (
-    <group>
-      <mesh>
-        <tubeGeometry args={[curve, 48, radius, 7, false]} />
-        <meshBasicMaterial color={color} transparent opacity={0.36} depthWrite={false} toneMapped={false} />
-      </mesh>
+    <group ref={root}>
+      <line>
+        <bufferGeometry ref={lineGeometry} />
+        <lineBasicMaterial color={color} transparent opacity={0.55} depthWrite={false} toneMapped={false} />
+      </line>
       <instancedMesh ref={movers} args={[undefined, undefined, particleCount]}>
-        <sphereGeometry args={[radius * 2.2, 8, 8]} />
+        <sphereGeometry args={[radius, 8, 8]} />
         <meshBasicMaterial color={color} toneMapped={false} />
       </instancedMesh>
     </group>
