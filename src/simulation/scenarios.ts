@@ -48,7 +48,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
   definition('engine-joins', 'Engine joins during acceleration', 'Engine joins', 18, 58, { ...DEFAULT_DRIVER_INPUTS, selector: 'D', accelerator: 0.76 }, 12,
     [{ atSeconds: 0, inputs: {}, camera: 'planetary', component: 'carrier' }, { atSeconds: 7, inputs: { accelerator: 0.35 }, component: 'ring' }],
     ['engine', 'carrier', 'mg1', 'ring', 'mg2'], ['MG1 starts the engine.', 'Carrier speed rises smoothly while ring speed remains tied to the road.'], 'Engine power joins MG2 without a speed discontinuity.'),
-  definition('low-soc-charge', 'Driving while charging low SOC', 'Drive + charge', 50, 43, { ...DEFAULT_DRIVER_INPUTS, selector: 'D', accelerator: 0.25 }, 105,
+  definition('low-soc-charge', 'Driving while charging low SOC', 'Drive + charge', 50, 43, { ...DEFAULT_DRIVER_INPUTS, selector: 'D', accelerator: 0.25 }, 125,
     [{ atSeconds: 0, inputs: {}, camera: 'drivetrain', component: 'mg1', explanation: 'The latched charge request adds power above road demand.' }],
     ['engine', 'mg1', 'inverter', 'battery', 'wheels'], ['Engine torque serves the output ring.', 'Surplus planetary power makes MG1 generate.', 'Charging tapers after the preferred target and clears at 60%.'], 'SOC reaches the clearing threshold without rapid mode oscillation.'),
   definition('combined-acceleration', 'Strong combined acceleration', 'Full power', 70, 50, { ...DEFAULT_DRIVER_INPUTS, selector: 'D', accelerator: 0.95 }, 12,
