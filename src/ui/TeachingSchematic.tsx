@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { scenarioById } from '../simulation/scenarios'
 import { useSimulator } from '../state/useSimulator'
 import type { ComponentId, EnergyFlow, FlowId, FlowKind } from '../simulation/types'
-import { fixedCarrierPlanetRpm, powerSplitPlanetRelativeRpm, reductionRingRpm } from '../drivetrain/visualMechanics'
+import { VISUAL_RPM_SCALE } from '../simulation/constants'
+import { fixedCarrierPlanetRpm, MECHANISM_STEP_SECONDS, powerSplitPlanetRelativeRpm, reductionRingRpm } from '../drivetrain/visualMechanics'
 
 const FLOW_COLORS: Record<FlowKind, string> = {
   engine: '#ff9a4d',
@@ -50,12 +51,14 @@ function componentClass(id: ComponentId, selected: ComponentId, connected: Set<C
 }
 
 function rotationStyle(rpm: number, running: boolean, visualSpeed: number, visualStep: number) {
-  const seconds = Math.max(0.45, Math.min(8, 3_600 / Math.max(120, Math.abs(rpm)))) / visualSpeed
+  const seconds = Math.abs(rpm) > 1
+    ? Math.PI * 2 / (Math.abs(rpm) * VISUAL_RPM_SCALE * visualSpeed)
+    : 1
   return {
     animationDuration: `${seconds}s`,
     animationDirection: rpm < 0 ? 'reverse' : 'normal',
     animationPlayState: running && Math.abs(rpm) > 1 ? 'running' : 'paused',
-    animationDelay: `${Math.abs(rpm) > 1 ? -visualStep * seconds / 36 : 0}s`,
+    animationDelay: `${Math.abs(rpm) > 1 ? -visualStep * MECHANISM_STEP_SECONDS / visualSpeed : 0}s`,
   } as React.CSSProperties
 }
 

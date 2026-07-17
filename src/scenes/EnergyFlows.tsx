@@ -47,6 +47,8 @@ function FlowPath({ id, kind, powerKw, direction, instanceIndex }: FlowPathProps
   const initialized = useRef(false)
   const dummy = useMemo(() => new Object3D(), [])
   const color = useMemo(() => new Color(COLORS[kind]), [kind])
+  const linePositions = useMemo(() => new Float32Array(49 * 3), [])
+  const linePositionAttribute = useMemo(() => new Float32BufferAttribute(linePositions, 3), [linePositions])
   const speed = 0.1 + Math.min(powerKw / 60, 1) * 0.25
   const radius = 0.026 + Math.min(powerKw / 60, 1) * 0.025
   const particleCount = 6
@@ -73,7 +75,8 @@ function FlowPath({ id, kind, powerKw, direction, instanceIndex }: FlowPathProps
     }
     const curve = new CatmullRomCurve3(points)
     const samples = curve.getPoints(48)
-    lineGeometry.current.setAttribute('position', new Float32BufferAttribute(samples.flatMap((point) => [point.x, point.y, point.z]), 3))
+    samples.forEach((point, index) => linePositionAttribute.setXYZ(index, point.x, point.y, point.z))
+    linePositionAttribute.needsUpdate = true
     lineGeometry.current.computeBoundingSphere()
 
     const stepDelta = visualStep - previousStep.current
@@ -96,7 +99,9 @@ function FlowPath({ id, kind, powerKw, direction, instanceIndex }: FlowPathProps
   return (
     <group ref={root}>
       <line>
-        <bufferGeometry ref={lineGeometry} />
+        <bufferGeometry ref={lineGeometry}>
+          <primitive attach="attributes-position" object={linePositionAttribute} />
+        </bufferGeometry>
         <lineBasicMaterial color={color} transparent opacity={0.55} depthWrite={false} toneMapped={false} />
       </line>
       <instancedMesh ref={movers} args={[undefined, undefined, particleCount]}>

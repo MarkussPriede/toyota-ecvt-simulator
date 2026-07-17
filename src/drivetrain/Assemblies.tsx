@@ -216,14 +216,43 @@ function Shaft({ position, length, axis = 'x', active = false, color = '#8b9da5'
   )
 }
 
+function CoaxialPowerSplitShafts({ powerSplitActive, sunActive }: { powerSplitActive: boolean; sunActive: boolean }) {
+  return (
+    <group>
+      {/* The carrier input is a cutaway hollow shaft, making the concentric
+          MG1/sun shaft visible on the exact same centreline. */}
+      <mesh position={[-3.0, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.15, 0.15, 2.8, 28, 1, true, 0.55, Math.PI * 1.38]} />
+        <meshStandardMaterial
+          color={powerSplitActive ? '#fff0d8' : '#d88436'}
+          emissive={powerSplitActive ? '#d88436' : '#000000'}
+          emissiveIntensity={powerSplitActive ? 0.72 : 0}
+          metalness={0.9}
+          roughness={0.2}
+          side={2}
+        />
+      </mesh>
+      <mesh position={[-2.18, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[sunActive ? 0.082 : 0.07, sunActive ? 0.082 : 0.07, 2.2, 20]} />
+        <meshStandardMaterial
+          color={sunActive ? '#f0e7ff' : '#a986ff'}
+          emissive={sunActive ? '#a986ff' : '#000000'}
+          emissiveIntensity={sunActive ? 0.8 : 0}
+          metalness={0.92}
+          roughness={0.17}
+        />
+      </mesh>
+    </group>
+  )
+}
+
 export function MechanicalConnections() {
   const selected = useSimulator((state) => state.selectedComponent)
   const powerSplitActive = ['engine', 'carrier', 'planets', 'sun', 'mg1', 'ring'].includes(selected)
   const outputActive = ['ring', 'mg2', 'reduction', 'differential', 'wheels'].includes(selected)
   return (
     <group>
-      <Shaft position={[-3.0, 0.13, 0]} length={2.8} active={powerSplitActive} color="#d88436" radius={0.11} />
-      <Shaft position={[-2.18, -0.13, 0]} length={2.2} active={selected === 'sun' || selected === 'mg1'} color="#a986ff" radius={0.075} />
+      <CoaxialPowerSplitShafts powerSplitActive={powerSplitActive} sunActive={selected === 'sun' || selected === 'mg1'} />
       <Shaft position={[0.15, 0.12, 0]} length={2.3} active={outputActive} color="#50e5f2" radius={0.10} />
       <Shaft position={[2.68, -0.12, 0]} length={1.95} active={selected === 'mg2' || selected === 'reduction'} color="#4ba8ff" radius={0.08} />
       <Shaft position={[4.72, -0.25, 0]} length={1.55} active={outputActive} color="#aab7bd" radius={0.08} />

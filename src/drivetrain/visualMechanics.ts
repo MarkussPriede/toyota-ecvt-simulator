@@ -1,6 +1,7 @@
-import { MG2_REDUCTION, POWER_SPLIT } from '../simulation/constants'
+import { MG2_REDUCTION, POWER_SPLIT, VISUAL_RPM_SCALE } from '../simulation/constants'
 
-export const MECHANISM_STEP_RADIANS = Math.PI / 18
+/** One paused step advances this much visual time, without advancing simulation time. */
+export const MECHANISM_STEP_SECONDS = 0.25
 
 export function powerSplitPlanetRelativeRpm(sunRpm: number, carrierRpm: number) {
   return -(sunRpm - carrierRpm) * POWER_SPLIT.sunTeeth / POWER_SPLIT.planetTeeth
@@ -15,5 +16,5 @@ export function fixedCarrierPlanetRpm(sunRpm: number) {
 }
 
 export function steppedRotation(rpm: number, continuousScale: number, stepCount: number) {
-  return rpm * continuousScale + Math.sign(rpm) * MECHANISM_STEP_RADIANS * stepCount
+  return rpm * (continuousScale + VISUAL_RPM_SCALE * MECHANISM_STEP_SECONDS * stepCount)
 }
