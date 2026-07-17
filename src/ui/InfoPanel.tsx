@@ -8,7 +8,7 @@ export function InfoPanel() {
   const selected = useSimulator((state) => state.selectedComponent)
   const output = useSimulator((state) => state.telemetry)
   const component = COMPONENTS[selected]
-  const currentNote = component.modeNotes[output.operatingMode]
+  const currentNote = component.modeNotes[output.systemObjective] ?? component.modeNotes[output.vehicleMotionState]
   const live = selected === 'engine'
     ? `${Math.round(output.engineRpm).toLocaleString()} rpm · ${output.engineMechanicalPowerKw.toFixed(1)} kW`
     : selected === 'mg1' || selected === 'sun'
@@ -43,7 +43,7 @@ export function InfoPanel() {
         <h3><Cable size={14} /> Connected to</h3>
         <p>{component.connection}</p>
       </section>
-      {currentNote && <div className="mode-note"><b>In {output.modeLabel}</b><span>{currentNote}</span></div>}
+      {currentNote && <div className="mode-note"><b>During {output.objectiveLabel}</b><span>{currentNote}</span></div>}
 
       <details className="technical-detail">
         <summary>Beginner explanation <ChevronRight size={14} /></summary>

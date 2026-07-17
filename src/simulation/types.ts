@@ -2,21 +2,23 @@ export type DriveSelector = 'P' | 'R' | 'N' | 'D' | 'B'
 
 export type EngineState = 'OFF' | 'CRANKING' | 'FUELED' | 'SPINNING_UNFUELED' | 'STOPPING'
 
-export type OperatingMode =
-  | 'READY'
-  | 'PARKED'
-  | 'EV_DRIVE'
-  | 'REVERSE_EV'
-  | 'ENGINE_START'
-  | 'ENGINE_DRIVE'
-  | 'ENGINE_DRIVE_AND_CHARGE'
-  | 'COMBINED_ACCELERATION'
-  | 'STATIONARY_CHARGING'
+export type VehicleMotionState =
+  | 'STATIONARY'
+  | 'ACCELERATING'
+  | 'CRUISING'
   | 'COASTING'
-  | 'REGENERATIVE_BRAKING'
-  | 'BLENDED_BRAKING'
+  | 'BRAKING'
+  | 'REVERSING'
+
+export type SystemObjective =
+  | 'ENGINE_OFF'
+  | 'STARTING'
+  | 'WARM_UP'
+  | 'PROPULSION'
+  | 'CHARGING'
+  | 'ASSISTING'
   | 'ENGINE_BRAKING'
-  | 'NEUTRAL'
+  | 'MG1_PROTECTION'
 
 export type ComponentId =
   | 'engine'
@@ -74,6 +76,8 @@ export interface SimulationState {
   vehicleAccelerationMps2: number
   batterySoc: number
   batteryEnergyKwh: number
+  /** Finite physical energy below the displayed usable-SOC window. */
+  protectedReserveEnergyKwh: number
   engineState: EngineState
   engineRpm: number
   engineTorqueNm: number
@@ -84,7 +88,14 @@ export interface SimulationState {
   engineTemperatureC: number
   chargeRequestActive: boolean
   warmupRequestActive: boolean
-  operatingMode: OperatingMode
+  vehicleMotionState: VehicleMotionState
+  systemObjective: SystemObjective
+  motionStateTimerSeconds: number
+  systemObjectiveTimerSeconds: number
+  pendingVehicleMotionState: VehicleMotionState
+  pendingSystemObjective: SystemObjective
+  pendingMotionStateTimerSeconds: number
+  pendingSystemObjectiveTimerSeconds: number
   crankingTimerSeconds: number
   engineOnTimerSeconds: number
   engineOffTimerSeconds: number
@@ -101,8 +112,11 @@ export interface PowerDiagnostics {
   batteryTerminalPowerKw: number
   batteryInternalPowerKw: number
   accessoryPowerKw: number
-  protectedStartReservePowerKw: number
+  /** Positive when the finite reserve below the usable SOC window supplies essential loads. */
+  protectedReservePowerKw: number
+  protectedReserveEnergyKwh: number
   inverterLossKw: number
+  inverterThroughputKw: number
   motorLossKw: number
   drivetrainLossKw: number
   drivetrainWheelPowerKw: number
@@ -120,6 +134,18 @@ export interface PowerDiagnostics {
   powerBalanceResidualKw: number
   planetaryResidualRpmTeeth: number
   mg2RatioResidualRpm: number
+  mg2ReductionResidualRpmTeeth: number
+  wheelDemandPowerKw: number
+  wheelDemandShortfallKw: number
+  engineTorqueViolationNm: number
+  enginePowerViolationKw: number
+  mg1TorqueViolationNm: number
+  mg1PowerViolationKw: number
+  mg2TorqueViolationNm: number
+  mg2PowerViolationKw: number
+  batteryDischargeViolationKw: number
+  batteryChargeViolationKw: number
+  inverterThroughputViolationKw: number
 }
 
 export interface SimulationTelemetry extends PowerDiagnostics {
@@ -141,8 +167,10 @@ export interface SimulationTelemetry extends PowerDiagnostics {
   chargeRequestActive: boolean
   socTargetPercent: number
   engineState: EngineState
-  operatingMode: OperatingMode
-  modeLabel: string
+  vehicleMotionState: VehicleMotionState
+  systemObjective: SystemObjective
+  motionLabel: string
+  objectiveLabel: string
   description: string
   mg1LimitActive: boolean
   energyFlows: EnergyFlow[]

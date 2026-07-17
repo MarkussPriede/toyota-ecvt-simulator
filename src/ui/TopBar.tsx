@@ -18,9 +18,10 @@ export function TopBar() {
           <h1>Power Split <span>Explorer</span></h1>
         </div>
       </div>
-      <div className="mode-readout" aria-live="polite">
+      <div className="mode-readout split-state-readout" aria-live="polite">
         <span className="status-dot" />
-        <div><small>OPERATING MODE</small><strong>{telemetry.modeLabel}</strong></div>
+        <div><small>VEHICLE MOTION</small><strong>{telemetry.motionLabel}</strong></div>
+        <div><small>SYSTEM OBJECTIVE</small><strong>{telemetry.objectiveLabel}</strong></div>
       </div>
       <div className="top-actions">
         <label className="scenario-select">

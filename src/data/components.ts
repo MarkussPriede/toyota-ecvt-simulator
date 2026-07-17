@@ -17,7 +17,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Its crankshaft drives the planetary carrier. There is no launch clutch or stepped gearbox.',
     beginner: 'The engine does not need to match wheel speed. The power-split gears and MG1 let it run at an efficient speed.',
     technical: 'The Atkinson-cycle engine is represented with a 5,200 rpm educational limit and 73 kW peak power.',
-    modeNotes: { READY: 'Stopped.', EV_DRIVE: 'Stopped while MG2 moves the car.', ENGINE_DRIVE: 'Runs near an efficient operating point.', COMBINED_ACCELERATION: 'Runs at high power.', STATIONARY_CHARGING: 'Turns the carrier so MG1 can generate.', ENGINE_DRIVE_AND_CHARGE: 'Meets wheel demand and supplies surplus generator power.', ENGINE_BRAKING: 'Spins unfueled and absorbs pumping work.' },
+    modeNotes: { ENGINE_OFF: 'Produces no combustion torque.', PROPULSION: 'Runs near an efficient operating point.', ASSISTING: 'Runs at high power while the battery assists.', CHARGING: 'Turns the carrier so MG1 can generate.', WARM_UP: 'Runs to reach the warm operating range.', ENGINE_BRAKING: 'Spins unfueled and absorbs pumping work.' },
   },
   mg1: {
     name: 'MG1 motor-generator', tag: 'Speed controller',
@@ -25,7 +25,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Its rotor is directly connected to the sun gear; its three-phase windings connect to the inverter.',
     beginner: 'By speeding up or slowing down, MG1 changes the allowed relationship between engine and wheel speed.',
     technical: 'MG1 speed is solved from Nr·ωr + Ns·ωs = (Nr + Ns)·ωc and is not assumed to always generate.',
-    modeNotes: { EV_DRIVE: 'Counter-rotates as the stationary carrier and moving ring impose.', ENGINE_DRIVE: 'Trims engine speed and may generate or motor.', ENGINE_DRIVE_AND_CHARGE: 'Absorbs planetary mechanical power and generates.', STATIONARY_CHARGING: 'Generates from engine power.', ENGINE_START: 'Motors the engine for the bounded crank transient.', REVERSE_EV: 'Responds mechanically to reverse ring rotation.' },
+    modeNotes: { ENGINE_OFF: 'Its signed speed still follows the rigid planetary relationship.', PROPULSION: 'Trims engine speed and may generate or motor.', CHARGING: 'Absorbs planetary mechanical power and generates.', STARTING: 'Motors the engine for the bounded crank transient.', MG1_PROTECTION: 'Carrier speed is adjusted to keep MG1 within its limit.' },
   },
   mg2: {
     name: 'MG2 traction motor-generator', tag: 'Drive + regeneration',
@@ -33,7 +33,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Mechanically geared to the output/final-drive side and electrically connected to the inverter.',
     beginner: 'MG2 is the main electric drive motor. It can also work backward as a generator.',
     technical: 'The fixed ratio is 58/22 = 2.636:1, followed by a 3.267 final drive. RPM is never clipped independently.',
-    modeNotes: { EV_DRIVE: 'Drives the wheels.', COMBINED_ACCELERATION: 'Combines battery and MG1-fed electrical power.', REGENERATIVE_BRAKING: 'Is driven by the wheels and generates.', REVERSE_EV: 'Rotates backward to reverse the car.' },
+    modeNotes: { ENGINE_OFF: 'May still drive electrically from the battery.', ASSISTING: 'Combines battery and MG1-fed electrical power.', BRAKING: 'Is driven by the wheels and generates.', REVERSING: 'Its fixed-carrier sun rotates opposite the reverse output ring.' },
   },
   sun: {
     name: 'Sun gear', tag: 'MG1 member',
@@ -49,7 +49,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Driven by the petrol engine crankshaft.',
     beginner: 'When the engine runs, it moves this spider-shaped frame and the planets mounted on it.',
     technical: 'Carrier speed is treated as engine speed in the simplified rigid connection.',
-    modeNotes: { STATIONARY_CHARGING: 'Rotates while the ring stays still, forcing MG1 to spin.', EV_DRIVE: 'Stationary with the engine off.' },
+    modeNotes: { CHARGING: 'Rotates while a stationary output forces MG1 to generate.', ENGINE_OFF: 'Stops unless protection or engine braking requires rotation.' },
   },
   planets: {
     name: 'Planet gears', tag: 'Power split',
@@ -65,7 +65,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Meshes internally with the planets and is connected to the wheel/output path.',
     beginner: 'This large outer gear is the road side of the power-split device.',
     technical: 'The educational model uses 78 ring teeth; the numerical equation uses the full count even though fewer teeth are drawn.',
-    modeNotes: { EV_DRIVE: 'Turns from MG2/wheel-side motion while the carrier is stopped.', STATIONARY_CHARGING: 'Held at zero speed while the carrier and sun rotate.' },
+    modeNotes: { ENGINE_OFF: 'Can turn from wheel-side motion while the carrier is stopped.', CHARGING: 'May remain at zero while the carrier and sun rotate.' },
   },
   reduction: {
     name: 'MG2 reduction planetary', tag: 'P410-style torque multiplication',
@@ -81,7 +81,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Receives the combined output and sends torque through both driveshafts.',
     beginner: 'It shares the final drive torque between the two front wheels.',
     technical: 'The cutaway shows a carrier, final-drive ring, two side gears, two spider gears, and both outputs.',
-    modeNotes: { REGENERATIVE_BRAKING: 'Carries road torque backward from the wheels to MG2.' },
+    modeNotes: { BRAKING: 'Carries road torque backward from the wheels to MG2.' },
   },
   wheels: {
     name: 'Driven wheels', tag: 'Road interface',
@@ -89,7 +89,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Connected to the differential through left and right driveshafts.',
     beginner: 'During braking, the flow can reverse: the turning wheels become the source that drives MG2.',
     technical: 'Vehicle-speed conversion assumes a 0.30 m effective tyre radius.',
-    modeNotes: { REGENERATIVE_BRAKING: 'Drive MG2 through the differential.', REVERSE_EV: 'Turn backward under reverse MG2 torque.' },
+    modeNotes: { BRAKING: 'Drive MG2 through the differential.', REVERSING: 'Turn backward under reverse MG2 torque.' },
   },
   battery: {
     name: 'High-voltage battery', tag: 'Electrical store',
@@ -97,7 +97,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Connected to the inverter by a high-voltage DC link.',
     beginner: 'It is a buffer, not the only energy source: engine power can also reach the wheels directly.',
     technical: 'Protected educational window: 40% hard lower, 45% request, 57% preferred, 60% clear, 70% regen taper, 80% hard upper. Positive displayed power means discharge.',
-    modeNotes: { EV_DRIVE: 'Supplies MG2.', COMBINED_ACCELERATION: 'Adds power.', REGENERATIVE_BRAKING: 'Accepts recovered energy.', ENGINE_DRIVE_AND_CHARGE: 'Accepts MG1-generated power until the latch clears.' },
+    modeNotes: { ENGINE_OFF: 'May supply MG2 while the engine remains off.', ASSISTING: 'Adds propulsion power.', BRAKING: 'Accepts recovered energy.', CHARGING: 'Accepts generated power until the latch clears.' },
   },
   inverter: {
     name: 'Inverter / power control unit', tag: 'Electrical router',
@@ -105,7 +105,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Electrically connects the battery, MG1 and MG2; it is not a mechanical component.',
     beginner: 'Think of it as a fast, bidirectional power router for the two motor-generators.',
     technical: 'The animation shows direction and approximate magnitude, not switching-level waveforms.',
-    modeNotes: { COMBINED_ACCELERATION: 'Combines battery and MG1 electrical power for MG2.', REGENERATIVE_BRAKING: 'Routes MG2-generated power back to the battery.', ENGINE_START: 'Routes battery power to MG1.' },
+    modeNotes: { ASSISTING: 'Combines battery and MG1 electrical power for MG2.', BRAKING: 'Routes MG2-generated power back to the battery.', STARTING: 'Routes usable-buffer or protected-reserve power to MG1.' },
   },
 }
 

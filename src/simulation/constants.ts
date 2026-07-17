@@ -26,6 +26,8 @@ export const BATTERY = {
   chargeEfficiency: 0.91,
   dischargeEfficiency: 0.94,
   accessoryLoadKw: 0.45,
+  protectedReserveCapacityKwh: 0.08,
+  protectedReserveMaxPowerKw: 10,
 } as const
 
 export const VEHICLE = {
@@ -54,11 +56,13 @@ export const LIMITS = {
   enginePowerKw: 73,
   mg1Rpm: 10_000,
   mg1PowerKw: 42,
+  mg1TorqueNm: 55,
   mg2Rpm: 13_500,
   mg2TorqueNm: 207,
   mg2PowerKw: 60,
   systemPowerKw: 100,
   regenPowerKw: 32,
+  inverterThroughputKw: 85,
 } as const
 
 export const CONTROL = {
@@ -69,6 +73,8 @@ export const CONTROL = {
   minimumEngineOffSeconds: 2,
   engineRpmRatePerSecond: 1_800,
   engineTorqueRatePerSecond: 260,
+  engineRelightRpm: 700,
+  classificationMinimumSeconds: 0.3,
   warmupStartC: 50,
   warmupClearC: 58,
   ambientTemperatureC: 20,

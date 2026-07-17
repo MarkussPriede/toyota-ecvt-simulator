@@ -64,7 +64,7 @@ The charge request is latched. It sets at or below 45% and remains set until SOC
 - Charge efficiency: 91%.
 - Discharge efficiency: 94%.
 - Nominal high-voltage accessory load: 0.45 kW.
-- At the hard lower boundary, normal EV propulsion is removed. A separately reported, bounded start reserve may finish the engine crank without pulling the displayed usable buffer below 40%.
+- Below the displayed usable window, an explicit 0.08 kWh protected reserve supplies essential accessories at the 40% boundary and may support the bounded engine-start transient. Its 10 kW power limit and energy are reported separately; it cannot propel MG2.
 
 Battery energy is integrated from limited internal power, then SOC is derived from energy. The controller does not calculate an impossible battery power and hide it with SOC clamping.
 
@@ -80,6 +80,8 @@ OFF → CRANKING → FUELED → STOPPING → OFF
 - `FUELED`: torque follows a rate-limited educational curve capped by 142 Nm and 73 kW.
 - `SPINNING_UNFUELED`: used for B-mode pumping loss and MG1 overspeed protection.
 - `STOPPING`: 0.45-second RPM transition before `OFF`.
+- Only `FUELED` may report positive combustion torque. Every other state forces combustion torque immediately to zero; unfueled pumping loss is separate.
+- A `SPINNING_UNFUELED` engine already above 700 rpm relights directly into `FUELED` without another starter-like crank sequence.
 - Minimum fueled run time is 4 seconds and minimum off time is 2 seconds.
 - Coolant temperature warms while fueled and cools toward 20°C while off. A latched warm-up request starts below 50°C and clears at 58°C.
 
@@ -93,7 +95,10 @@ No fixed engine-power percentages are used. At every substep the controller:
 4. Uses planetary torque reaction and signed member speeds to calculate MG1 mechanical power.
 5. Solves MG2 mechanical power as the remaining amount required to close the drivetrain balance.
 6. Converts both machine ports through motor and inverter efficiencies.
-7. Reduces traction, generation, or regeneration before integration if battery or machine limits would be exceeded.
+7. Reduces traction, generation, or regeneration before integration if battery, machine, engine, or inverter limits would be exceeded.
+8. Re-evaluates allocation at the final post-step RPMs so reported torque and power share one instant.
+
+Independent diagnostics cover engine torque/power, MG1 torque/power, MG2 torque/power, usable-battery charge/discharge, inverter throughput, and unmet wheel demand. These feasibility checks are separate from the electrical and mechanical accounting residuals.
 
 During low-SOC driving, requested engine power includes wheel demand, losses, accessories, and an SOC-dependent charging objective. Driver propulsion takes priority near full accelerator; the controller reduces or removes the charging objective instead of imposing a large generator load.
 
@@ -115,6 +120,7 @@ During low-SOC driving, requested engine power includes wheel demand, losses, ac
 - Geometry check: `58 = 22 + 2 × 18`.
 - Reduction magnitude: `58 / 22 = 2.636:1`.
 - Final drive: 3.267:1.
+- Signed relationship: `58 × outputRingRPM + 22 × MG2RPM = 0`; the MG2 sun therefore counter-rotates relative to the output ring.
 
 These selected tooth counts make the teaching geometry internally consistent and match the simulator's declared fixed-ratio magnitude. They are not claimed to be production tooth counts.
 

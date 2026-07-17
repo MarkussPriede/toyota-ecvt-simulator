@@ -25,7 +25,9 @@ npm run lint
 - Energy-based SOC integration with 40–80% protection, 45/60% charge-request hysteresis, charge/discharge power limits, losses, and accessories.
 - Driving and stationary charge sustain through the engine, planetary set, MG1, inverter, and battery.
 - Bounded `OFF → CRANKING → FUELED → STOPPING` engine transitions plus unfueled engine spinning for B mode and MG1 protection.
-- Signed MG1/MG2 RPM and power ports, exact planetary kinematics, rigid MG2/final-drive ratios, and separate electrical/mechanical balance residuals.
+- Signed MG1/MG2 RPM and power ports, exact planetary kinematics, a counter-rotating fixed-carrier MG2 reduction, and separate electrical/mechanical balance residuals.
+- Independent stabilized vehicle-motion and system-objective readouts, so coasting, reversing, braking, charging, warm-up, and protection intent remain truthful in combination.
+- Explicit finite protected-reserve energy plus independent engine, MG1, MG2, battery, inverter, and wheel-demand feasibility diagnostics.
 - Deterministic scripted demonstrations and a pure scenario runner outside React and Three.js.
 
 The simulator API lives in [`src/simulation/engine.ts`](src/simulation/engine.ts), with scenario execution in [`src/simulation/scenarios.ts`](src/simulation/scenarios.ts). React and Three.js display the resolved state; they do not calculate drivetrain physics.

@@ -15,6 +15,8 @@ export function InstrumentPanel() {
       <div className="instrument-grid">
         <Instrument label="Vehicle" value={fmt(telemetry.vehicleSpeedKph, 1)} unit="km/h" />
         <Instrument label="Acceleration" value={fmt(telemetry.vehicleAccelerationMps2, 2)} unit="m/s²" />
+        <Instrument label="Motion state" value={telemetry.motionLabel} unit="" />
+        <Instrument label="System objective" value={telemetry.objectiveLabel} unit="" />
         <Instrument label={`Engine · ${telemetry.engineState}`} value={fmt(telemetry.engineRpm)} unit="rpm" tone="engine-tone" />
         <Instrument label="Engine torque" value={fmt(telemetry.engineTorqueNm)} unit="Nm" tone="engine-tone" />
         <Instrument label="Engine power" value={fmt(telemetry.engineMechanicalPowerKw, 1)} unit="kW" tone="engine-tone" />
@@ -27,6 +29,7 @@ export function InstrumentPanel() {
         <Instrument label="Battery SOC" value={fmt(telemetry.batterySoc, 1)} unit="%" />
         <Instrument label="Battery + discharge" value={fmt(telemetry.batteryTerminalPowerKw, 1)} unit="kW" tone={telemetry.batteryTerminalPowerKw < 0 ? 'regen-tone' : 'battery-tone'} />
         <Instrument label="Charge request" value={telemetry.chargeRequestActive ? 'LATCHED' : 'clear'} unit="" tone={telemetry.chargeRequestActive ? 'regen-tone' : undefined} />
+        <Instrument label="Protected reserve" value={fmt(telemetry.protectedReserveEnergyKwh * 1_000, 1)} unit="Wh" tone={telemetry.protectedReservePowerKw > 0 ? 'limit-tone' : undefined} />
         <Instrument label="SOC preferred" value={fmt(telemetry.socTargetPercent)} unit="%" />
         <Instrument label="Wheel torque" value={fmt(telemetry.wheelTorqueNm)} unit="Nm" />
         <Instrument label="Wheel power" value={fmt(telemetry.wheelPowerKw, 1)} unit="kW" />
@@ -44,9 +47,23 @@ export function InstrumentPanel() {
         <em>Mechanical {telemetry.mechanicalBalanceResidualKw.toExponential(2)}</em>
         <em>Motor loss {telemetry.motorLossKw.toFixed(2)} kW</em>
         <em>Inverter {telemetry.inverterLossKw.toFixed(2)} kW</em>
+        <em>Throughput {telemetry.inverterThroughputKw.toFixed(1)} kW</em>
+        <em>Reserve {telemetry.protectedReservePowerKw.toFixed(2)} kW</em>
         <em>Driveline {telemetry.drivetrainLossKw.toFixed(2)} kW</em>
         <em>Planet residual {telemetry.planetaryResidualRpmTeeth.toExponential(1)}</em>
         <em>MG2 ratio residual {telemetry.mg2RatioResidualRpm.toExponential(1)} rpm</em>
+        <em>Demand gap {telemetry.wheelDemandShortfallKw.toFixed(2)} kW</em>
+        <em>Max violation {Math.max(
+          telemetry.engineTorqueViolationNm,
+          telemetry.enginePowerViolationKw,
+          telemetry.mg1TorqueViolationNm,
+          telemetry.mg1PowerViolationKw,
+          telemetry.mg2TorqueViolationNm,
+          telemetry.mg2PowerViolationKw,
+          telemetry.batteryDischargeViolationKw,
+          telemetry.batteryChargeViolationKw,
+          telemetry.inverterThroughputViolationKw,
+        ).toExponential(1)}</em>
       </div>}
     </footer>
   )

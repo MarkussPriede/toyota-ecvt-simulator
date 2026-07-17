@@ -113,6 +113,7 @@ function Nomograph() {
 
 export function TeachingSchematic() {
   const telemetry = useSimulator((state) => state.telemetry)
+  const selector = useSimulator((state) => state.inputs.selector)
   const selected = useSimulator((state) => state.selectedComponent)
   const setSelected = useSimulator((state) => state.setSelectedComponent)
   const running = useSimulator((state) => state.running)
@@ -218,12 +219,12 @@ export function TeachingSchematic() {
           </g>
 
           {telemetry.chargeRequestActive && <g className="charge-latch"><rect x="610" y="487" width="180" height="42" rx="21" /><text x="700" y="513" textAnchor="middle">CHARGE REQUEST LATCHED</text></g>}
-          {telemetry.operatingMode === 'PARKED' && <g className="parking-pawl"><path d="M882 221 l17 23 15-31" /><text x="900" y="198" textAnchor="middle">PARK PAWL</text></g>}
+          {selector === 'P' && <g className="parking-pawl"><path d="M882 221 l17 23 15-31" /><text x="900" y="198" textAnchor="middle">PARK PAWL</text></g>}
           {energyArrows && <FlowOverlay flows={telemetry.energyFlows} running={running} />}
         </svg>
       </div>
       <div className="schematic-learning-rail">
-        <div className="mode-teaching-copy"><span>{scenario ? `DEMONSTRATION · ${scenario.label}` : 'WHAT IS HAPPENING'}</span><strong>{telemetry.modeLabel}</strong><p>{scenario ? scenario.explanationSteps[explanationIndex] : telemetry.description}</p></div>
+        <div className="mode-teaching-copy"><span>{scenario ? `DEMONSTRATION · ${scenario.label}` : telemetry.motionLabel}</span><strong>{telemetry.objectiveLabel}</strong><p>{scenario ? scenario.explanationSteps[explanationIndex] : telemetry.description}</p></div>
         <Nomograph />
       </div>
     </div>

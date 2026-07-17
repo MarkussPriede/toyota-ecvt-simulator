@@ -60,6 +60,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .mode-readout { gap: 10px; min-width: 230px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(10, 27, 37, .7); }
 .mode-readout small, .scenario-select > span { display: block; margin-bottom: 2px; color: #6f8792; font-size: 8px; font-weight: 700; letter-spacing: .14em; }
 .mode-readout strong { display: block; font-size: 12px; font-weight: 650; color: #d9edf3; }
+.split-state-readout > div + div { padding-left: 12px; border-left: 1px solid var(--line); }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px rgba(76, 224, 155, .1), 0 0 12px rgba(76,224,155,.8); }
 
 .top-actions { justify-content: flex-end; gap: 9px; }
