@@ -50,7 +50,7 @@ The simulator API lives in [`src/simulation/engine.ts`](src/simulation/engine.ts
 
 - [`docs/sign-conventions.md`](docs/sign-conventions.md) is authoritative for every power and rotation sign.
 - [`docs/educational-model.md`](docs/educational-model.md) documents the vehicle, battery, engine, control, gear, efficiency, and geometry assumptions and their limitations.
-- [`docs/acceptance/README.md`](docs/acceptance/README.md) indexes the captured Phase 2 acceptance views.
+- [`docs/acceptance/README.md`](docs/acceptance/README.md) indexes the moving 3D acceptance videos and reference stills.
 
 ## Project layout
 
