@@ -37,18 +37,20 @@ The simulator API lives in [`src/simulation/engine.ts`](src/simulation/engine.ts
 ### Teaching schematic — default
 
 - Direct labels and leader paths for the engine, MG1, power-split members, MG2, fixed-carrier reduction planetary, final drive, differential, wheels, battery, and inverter.
-- Live signed rotation, calculated energy paths, inactive-system dimming, selection/connection highlighting, park lock, charge-latch indicator, and a planetary speed nomograph.
+- Live signed rotation, real planet orbit/self-spin, fixed-carrier sun/planet/ring animation, calculated energy paths, selection/connection highlighting, park lock, charge-latch indicator, and a planetary speed nomograph.
 
 ### 3D cutaway — secondary
 
 - P410-style power split and MG2 sun/fixed-carrier/ring reduction sets.
-- Carrier/pin/planet animation hierarchies, readable differential internals, continuous shafts, staged exploded motion, exploded-aware connection paths, and instanced energy particles.
-- Camera presets, component inspector, labels, rotation arrows, and quality modes remain available.
+- Carrier/pin/planet animation hierarchies, correctly oriented differential/half-shafts, distinct mechanical shafts, a genuinely open cutaway shell, staged exploded motion, live component-ref energy paths, and pause-safe instanced energy particles.
+- Instanced gear teeth, declarative selection halos, immediate-neighbour labels with leaders, tangent-correct signed rotation arrows, camera presets, component inspector, and quality modes.
+- Visual slow-motion and step-through are independent from physics time, so mechanism teaching never changes the simulation result.
 
 ## Documentation
 
 - [`docs/sign-conventions.md`](docs/sign-conventions.md) is authoritative for every power and rotation sign.
 - [`docs/educational-model.md`](docs/educational-model.md) documents the vehicle, battery, engine, control, gear, efficiency, and geometry assumptions and their limitations.
+- [`docs/acceptance/README.md`](docs/acceptance/README.md) indexes the captured Phase 2 acceptance views.
 
 ## Project layout
 
