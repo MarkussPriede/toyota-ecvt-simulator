@@ -75,6 +75,15 @@ function assertCompletion(scenario: ScenarioDefinition, samples: ScenarioSample[
       expect(final.telemetry.vehicleMotionState).toBe('REVERSING')
       expect(final.telemetry.vehicleSpeedKph).toBeGreaterThan(-35.5)
       break
+    case 'direction-reversal':
+      expect(samples.some((sample) => sample.state.vehicleSpeedMps < -0.2
+        && sample.telemetry.wheelPowerKw < 0)).toBe(true)
+      expect(samples.some((sample) => sample.state.vehicleSpeedMps > 0.2
+        && sample.telemetry.wheelPowerKw > 0)).toBe(true)
+      expect(samples.some((sample) => sample.telemetry.systemObjective === 'REGENERATING')).toBe(true)
+      expect(samples.some((sample) => sample.telemetry.systemObjective === 'EV_PROPULSION')).toBe(true)
+      expect(final.state.vehicleSpeedMps).toBeGreaterThan(0)
+      break
     case 'stationary-charge':
       expect(final.state.vehicleSpeedMps).toBe(0)
       expect(samples.some((sample) => sample.telemetry.batteryTerminalPowerKw < -1)).toBe(true)

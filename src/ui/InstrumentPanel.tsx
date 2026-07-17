@@ -29,7 +29,7 @@ export function InstrumentPanel() {
         <Instrument label="Battery SOC" value={fmt(telemetry.batterySoc, 1)} unit="%" />
         <Instrument label="Battery + discharge" value={fmt(telemetry.batteryTerminalPowerKw, 1)} unit="kW" tone={telemetry.batteryTerminalPowerKw < 0 ? 'regen-tone' : 'battery-tone'} />
         <Instrument label="Charge request" value={telemetry.chargeRequestActive ? 'LATCHED' : 'clear'} unit="" tone={telemetry.chargeRequestActive ? 'regen-tone' : undefined} />
-        <Instrument label="Protected reserve" value={fmt(telemetry.protectedReserveEnergyKwh * 1_000, 1)} unit="Wh" tone={telemetry.protectedReservePowerKw > 0 ? 'limit-tone' : undefined} />
+        <Instrument label="Protected reserve" value={fmt(telemetry.protectedReserveEnergyKwh * 1_000, 1)} unit="Wh" tone={telemetry.protectedReservePowerKw > 0 ? 'limit-tone' : telemetry.protectedReservePowerKw < 0 ? 'regen-tone' : undefined} />
         <Instrument label="SOC preferred" value={fmt(telemetry.socTargetPercent)} unit="%" />
         <Instrument label="Wheel torque" value={fmt(telemetry.wheelTorqueNm)} unit="Nm" />
         <Instrument label="Wheel power" value={fmt(telemetry.wheelPowerKw, 1)} unit="kW" />

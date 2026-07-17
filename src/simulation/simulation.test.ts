@@ -105,6 +105,32 @@ describe('vehicle motion and signed energy', () => {
     expect(result.telemetry.mg2MechanicalPowerKw).toBeLessThan(0)
     expect(result.telemetry.mg2ElectricalPowerKw).toBeLessThan(0)
     expect(result.telemetry.batteryTerminalPowerKw).toBeLessThan(0)
+    expect(result.telemetry.systemObjective).toBe('REGENERATING')
+  })
+
+  it.each([
+    ['D while rolling backward', 'D' as const, -12, 0.42, 1],
+    ['R while rolling forward', 'R' as const, 12, 0.42, -1],
+  ])('retains signed wheel power through zero speed in %s', (_name, selector, speedKph, accelerator, finalDirection) => {
+    const samples = simulateTrace(
+      createInitialSimulationState({ vehicleSpeedKph: speedKph, batterySoc: 60, engineTemperatureC: 82 }),
+      { ...DEFAULT_DRIVER_INPUTS, selector, accelerator },
+      7,
+    )
+    const beforeZero = samples.filter((sample) => Math.sign(sample.state.vehicleSpeedMps) === Math.sign(speedKph))
+    const afterZero = samples.filter((sample) => Math.sign(sample.state.vehicleSpeedMps) === finalDirection)
+    expect(beforeZero.some((sample) => sample.telemetry.wheelPowerKw < -0.05)).toBe(true)
+    expect(beforeZero.some((sample) => sample.telemetry.systemObjective === 'REGENERATING')).toBe(true)
+    expect(afterZero.some((sample) => sample.telemetry.wheelPowerKw > 0.05)).toBe(true)
+    expect(afterZero.some((sample) => sample.telemetry.systemObjective === 'EV_PROPULSION')).toBe(true)
+    expect(samples[samples.length - 1]!.state.vehicleSpeedMps * finalDirection).toBeGreaterThan(0.5)
+  })
+
+  it('labels battery-only positive wheel power as EV propulsion', () => {
+    const result = simulate(createInitialSimulationState({ batterySoc: 60, engineTemperatureC: 82 }), drive(0.35), 2)
+    expect(result.state.engineState).toBe('OFF')
+    expect(result.telemetry.wheelPowerKw).toBeGreaterThan(0)
+    expect(result.telemetry.systemObjective).toBe('EV_PROPULSION')
   })
 })
 
@@ -213,6 +239,60 @@ describe('engine state integrity and protected reserve', () => {
     expect(result.telemetry.protectedReservePowerKw).toBeGreaterThan(0)
     expect(result.state.protectedReserveEnergyKwh).toBeLessThan(start.protectedReserveEnergyKwh)
     expect(result.state.batterySoc).toBeGreaterThanOrEqual(BATTERY.hardLowerSoc)
+  })
+
+  it('depletes the protected reserve under essential load and recharges it from feasible generation', () => {
+    const depleted = simulate(
+      createInitialSimulationState({ batterySoc: BATTERY.hardLowerSoc, protectedReserveEnergyKwh: 0.0002 }),
+      DEFAULT_DRIVER_INPUTS,
+      3,
+    )
+    expect(depleted.state.protectedReserveEnergyKwh).toBeLessThan(1e-8)
+
+    const rechargeStart = createInitialSimulationState({
+      vehicleSpeedKph: 60,
+      batterySoc: 55,
+      protectedReserveEnergyKwh: 0,
+    })
+    const recharged = simulate(rechargeStart, drive(0, 0.35), 2)
+    expect(recharged.telemetry.protectedReservePowerKw).toBeLessThan(0)
+    expect(recharged.state.protectedReserveEnergyKwh).toBeGreaterThan(0)
+    expect(recharged.state.protectedReserveEnergyKwh).toBeLessThanOrEqual(BATTERY.protectedReserveCapacityKwh)
+  })
+
+  it('cannot complete a crank when neither usable battery energy nor reserve energy is available', () => {
+    const start = createInitialSimulationState({
+      batterySoc: BATTERY.hardLowerSoc,
+      protectedReserveEnergyKwh: 0,
+    })
+    const result = simulate(start, DEFAULT_DRIVER_INPUTS, 3)
+    expect(result.state.engineState).toBe('CRANKING')
+    expect(result.state.crankingWorkKj).toBe(0)
+    expect(result.state.crankingDeliveredPowerKw).toBe(0)
+    expect(result.telemetry.engineMechanicalPowerKw).toBe(0)
+  })
+
+  it('requires feasible accumulated MG1 cranking work before entering FUELED', () => {
+    const samples = simulateTrace(createInitialSimulationState({ batterySoc: 43 }), DEFAULT_DRIVER_INPUTS, 2)
+    const crankSamples = samples.filter((sample) => sample.state.engineState === 'CRANKING')
+    const firstFueledIndex = samples.findIndex((sample) => sample.state.engineState === 'FUELED')
+    expect(crankSamples.some((sample) => sample.state.crankingDeliveredPowerKw > 0)).toBe(true)
+    expect(crankSamples.some((sample) => sample.state.crankingWorkKj > 0)).toBe(true)
+    expect(firstFueledIndex).toBeGreaterThan(0)
+    expect(samples.slice(0, firstFueledIndex).every((sample) => sample.state.engineState !== 'FUELED')).toBe(true)
+  })
+
+  it('keeps a fueled minimum-run state, objective, and combustion torque internally consistent', () => {
+    const start = {
+      ...createInitialSimulationState({ batterySoc: 60, engineState: 'FUELED', engineRpm: 1_300 }),
+      engineOnTimerSeconds: 0,
+    }
+    const samples = simulateTrace(start, drive(), 4.5)
+    const fueled = samples.filter((sample) => sample.state.engineState === 'FUELED')
+    expect(fueled.length).toBeGreaterThan(0)
+    expect(fueled.every((sample) => sample.telemetry.systemObjective !== 'ENGINE_OFF')).toBe(true)
+    expect(fueled.some((sample) => sample.telemetry.systemObjective === 'IDLING')).toBe(true)
+    expect(fueled.some((sample) => sample.telemetry.engineTorqueNm > 0)).toBe(true)
   })
 
   it('never remains in CRANKING beyond the bounded transient', () => {

@@ -13,10 +13,13 @@ export type VehicleMotionState =
 export type SystemObjective =
   | 'ENGINE_OFF'
   | 'STARTING'
+  | 'IDLING'
   | 'WARM_UP'
   | 'PROPULSION'
+  | 'EV_PROPULSION'
   | 'CHARGING'
   | 'ASSISTING'
+  | 'REGENERATING'
   | 'ENGINE_BRAKING'
   | 'MG1_PROTECTION'
 
@@ -97,6 +100,10 @@ export interface SimulationState {
   pendingMotionStateTimerSeconds: number
   pendingSystemObjectiveTimerSeconds: number
   crankingTimerSeconds: number
+  /** Accumulated feasible MG1-to-engine cranking work. */
+  crankingWorkKj: number
+  /** Feasible cranking mechanical power delivered during the preceding substep. */
+  crankingDeliveredPowerKw: number
   engineOnTimerSeconds: number
   engineOffTimerSeconds: number
   stoppingTimerSeconds: number
@@ -112,7 +119,7 @@ export interface PowerDiagnostics {
   batteryTerminalPowerKw: number
   batteryInternalPowerKw: number
   accessoryPowerKw: number
-  /** Positive when the finite reserve below the usable SOC window supplies essential loads. */
+  /** Positive when reserve supplies essential loads; negative while generated power recharges it. */
   protectedReservePowerKw: number
   protectedReserveEnergyKwh: number
   inverterLossKw: number

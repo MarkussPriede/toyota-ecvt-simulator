@@ -17,7 +17,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Its crankshaft drives the planetary carrier. There is no launch clutch or stepped gearbox.',
     beginner: 'The engine does not need to match wheel speed. The power-split gears and MG1 let it run at an efficient speed.',
     technical: 'The Atkinson-cycle engine is represented with a 5,200 rpm educational limit and 73 kW peak power.',
-    modeNotes: { ENGINE_OFF: 'Produces no combustion torque.', PROPULSION: 'Runs near an efficient operating point.', ASSISTING: 'Runs at high power while the battery assists.', CHARGING: 'Turns the carrier so MG1 can generate.', WARM_UP: 'Runs to reach the warm operating range.', ENGINE_BRAKING: 'Spins unfueled and absorbs pumping work.' },
+    modeNotes: { ENGINE_OFF: 'Produces no combustion torque.', IDLING: 'Completes its minimum run with internally consistent fueled torque.', PROPULSION: 'Runs near an efficient operating point.', ASSISTING: 'Runs at high power while the battery assists.', CHARGING: 'Turns the carrier so MG1 can generate.', WARM_UP: 'Runs to reach the warm operating range.', ENGINE_BRAKING: 'Spins unfueled and absorbs pumping work.' },
   },
   mg1: {
     name: 'MG1 motor-generator', tag: 'Speed controller',
@@ -33,7 +33,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Mechanically geared to the output/final-drive side and electrically connected to the inverter.',
     beginner: 'MG2 is the main electric drive motor. It can also work backward as a generator.',
     technical: 'The fixed ratio is 58/22 = 2.636:1, followed by a 3.267 final drive. RPM is never clipped independently.',
-    modeNotes: { ENGINE_OFF: 'May still drive electrically from the battery.', ASSISTING: 'Combines battery and MG1-fed electrical power.', BRAKING: 'Is driven by the wheels and generates.', REVERSING: 'Its fixed-carrier sun rotates opposite the reverse output ring.' },
+    modeNotes: { ENGINE_OFF: 'Remains available but is not currently propelling or regenerating.', EV_PROPULSION: 'Uses battery power to propel through the fixed-carrier reduction.', REGENERATING: 'Is driven by the wheels and generates.', ASSISTING: 'Combines battery and MG1-fed electrical power.', BRAKING: 'Is driven by the wheels and generates.', REVERSING: 'Its fixed-carrier sun rotates opposite the reverse output ring.' },
   },
   sun: {
     name: 'Sun gear', tag: 'MG1 member',
@@ -97,7 +97,7 @@ export const COMPONENTS: Record<ComponentId, ComponentInfo> = {
     connection: 'Connected to the inverter by a high-voltage DC link.',
     beginner: 'It is a buffer, not the only energy source: engine power can also reach the wheels directly.',
     technical: 'Protected educational window: 40% hard lower, 45% request, 57% preferred, 60% clear, 70% regen taper, 80% hard upper. Positive displayed power means discharge.',
-    modeNotes: { ENGINE_OFF: 'May supply MG2 while the engine remains off.', ASSISTING: 'Adds propulsion power.', BRAKING: 'Accepts recovered energy.', CHARGING: 'Accepts generated power until the latch clears.' },
+    modeNotes: { ENGINE_OFF: 'Supplies only explicit system loads.', EV_PROPULSION: 'Supplies MG2 propulsion power.', REGENERATING: 'Accepts recovered vehicle energy.', ASSISTING: 'Adds propulsion power.', BRAKING: 'Accepts recovered energy.', CHARGING: 'Accepts generated power until the latch clears.' },
   },
   inverter: {
     name: 'Inverter / power control unit', tag: 'Electrical router',

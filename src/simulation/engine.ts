@@ -43,10 +43,13 @@ const MOTION_COPY: Record<VehicleMotionState, { label: string; description: stri
 const OBJECTIVE_COPY: Record<SystemObjective, { label: string; description: string }> = {
   ENGINE_OFF: { label: 'Engine off', description: 'The engine is not producing combustion torque.' },
   STARTING: { label: 'Starting engine', description: 'MG1 is performing a bounded engine-start transient.' },
+  IDLING: { label: 'Engine idling', description: 'The fueled engine is completing its minimum run while carrying essential load.' },
   WARM_UP: { label: 'Engine warm-up', description: 'The engine is running to reach its warm operating range.' },
   PROPULSION: { label: 'Engine propulsion', description: 'The engine is contributing to road propulsion.' },
+  EV_PROPULSION: { label: 'EV propulsion', description: 'Battery power is driving MG2 while the engine remains unfueled.' },
   CHARGING: { label: 'Charging battery', description: 'The latched charge objective is using engine power to replenish the battery.' },
   ASSISTING: { label: 'Electrical assist', description: 'Battery power assists the fueled engine during strong propulsion demand.' },
+  REGENERATING: { label: 'Regenerating', description: 'MG2 is converting vehicle motion into electrical charging power.' },
   ENGINE_BRAKING: { label: 'Engine braking', description: 'The unfueled engine is absorbing pumping work in B mode.' },
   MG1_PROTECTION: { label: 'MG1 protection', description: 'Carrier speed is being controlled to keep MG1 within its speed limit.' },
 }
@@ -70,6 +73,9 @@ export function createInitialSimulationState(options: InitialSimulationOptions =
     maxVehicleSpeedMps,
   )
   const engineState = options.engineState ?? 'OFF'
+  const initialObjective: SystemObjective = engineState === 'CRANKING'
+    ? 'STARTING'
+    : engineState === 'FUELED' ? 'IDLING' : 'ENGINE_OFF'
   const engineRpm = clamp(options.engineRpm ?? (engineState === 'FUELED' ? 1_300 : 0), 0, LIMITS.engineRpm)
   const kinematics = calculateKinematics(vehicleSpeedMps, engineRpm)
   return {
@@ -97,16 +103,18 @@ export function createInitialSimulationState(options: InitialSimulationOptions =
     vehicleMotionState: Math.abs(vehicleSpeedMps) < 0.15
       ? 'STATIONARY'
       : vehicleSpeedMps < 0 ? 'REVERSING' : 'COASTING',
-    systemObjective: engineState === 'CRANKING' ? 'STARTING' : 'ENGINE_OFF',
+    systemObjective: initialObjective,
     motionStateTimerSeconds: CONTROL.classificationMinimumSeconds,
     systemObjectiveTimerSeconds: CONTROL.classificationMinimumSeconds,
     pendingVehicleMotionState: Math.abs(vehicleSpeedMps) < 0.15
       ? 'STATIONARY'
       : vehicleSpeedMps < 0 ? 'REVERSING' : 'COASTING',
-    pendingSystemObjective: engineState === 'CRANKING' ? 'STARTING' : 'ENGINE_OFF',
+    pendingSystemObjective: initialObjective,
     pendingMotionStateTimerSeconds: 0,
     pendingSystemObjectiveTimerSeconds: 0,
     crankingTimerSeconds: 0,
+    crankingWorkKj: 0,
+    crankingDeliveredPowerKw: 0,
     engineOnTimerSeconds: engineState === 'FUELED' ? CONTROL.minimumEngineOnSeconds : 0,
     engineOffTimerSeconds: engineState === 'OFF' ? CONTROL.minimumEngineOffSeconds + 1 : 0,
     stoppingTimerSeconds: 0,
@@ -177,6 +185,14 @@ function protectedReserveLimitKw(state: SimulationState, dt: number) {
   return Math.min(BATTERY.protectedReserveMaxPowerKw, energyLimit)
 }
 
+function protectedReserveRechargeLimitKw(state: SimulationState, dt: number) {
+  const headroomKwh = Math.max(0, BATTERY.protectedReserveCapacityKwh - state.protectedReserveEnergyKwh)
+  const energyLimit = dt > 0
+    ? headroomKwh * 3_600 / dt
+    : BATTERY.protectedReserveMaxRechargeKw
+  return Math.min(BATTERY.protectedReserveMaxRechargeKw, energyLimit)
+}
+
 function engineTorqueLimitNm(rpm: number) {
   if (rpm < 650) return 0
   const powerLimited = LIMITS.enginePowerKw * 1_000 / (rpm * TWO_PI / 60)
@@ -228,6 +244,7 @@ interface AllocationContext {
   accessoryPowerKw: number
   mg1CrankingPowerKw: number
   protectedReserveAvailablePowerKw: number
+  protectedReserveRechargeLimitKw: number
   usableBatteryDischargeLimitKw: number
 }
 
@@ -247,8 +264,12 @@ function allocatePower(context: AllocationContext): Allocation {
     / (POWER_SPLIT.ringTeeth + POWER_SPLIT.sunTeeth)
   // Cranking is torque-controlled. Recomputing power from the reported RPM
   // prevents an old-speed power request from exceeding the post-step torque limit.
-  const crankTorqueNm = context.mg1CrankingPowerKw > 0
-    ? Math.sign(mg1Omega || 1) * Math.min(LIMITS.mg1TorqueNm * 0.86, 48)
+  const crankTorqueNm = context.mg1CrankingPowerKw > 0 && Math.abs(mg1Omega) > EPSILON
+    ? Math.sign(mg1Omega) * Math.min(
+      LIMITS.mg1TorqueNm * 0.86,
+      48,
+      context.mg1CrankingPowerKw * 1_000 / Math.abs(mg1Omega),
+    )
     : 0
   const mg1TorqueNm = planetaryMg1TorqueNm + crankTorqueNm
   const mg1MechanicalPowerKw = mg1TorqueNm * mg1Omega / 1_000
@@ -275,11 +296,16 @@ function allocatePower(context: AllocationContext): Allocation {
   const protectedEligiblePowerKw = context.accessoryPowerKw + (context.mg1CrankingPowerKw > 0
     ? Math.max(0, mg1.electricalPowerKw) + mg1InverterShareKw
     : 0)
-  const protectedReservePowerKw = Math.min(
+  const protectedReserveSupplyPowerKw = Math.min(
     context.protectedReserveAvailablePowerKw,
     protectedEligiblePowerKw,
     Math.max(0, grossBusPowerKw - context.usableBatteryDischargeLimitKw),
   )
+  const protectedReserveRechargePowerKw = Math.min(
+    context.protectedReserveRechargeLimitKw,
+    Math.max(0, -grossBusPowerKw),
+  )
+  const protectedReservePowerKw = protectedReserveSupplyPowerKw - protectedReserveRechargePowerKw
   const batteryTerminalPowerKw = grossBusPowerKw - protectedReservePowerKw
   const mechanicalResidualKw = engineMechanicalPowerKw + mg1MechanicalPowerKw + mg2MechanicalPowerKw
     - context.drivetrainWheelPowerKw - drivetrainLossKw - enginePumpingLossKw
@@ -359,9 +385,17 @@ function chooseEngineTorque(
   return bestTorque
 }
 
-function updateEngineState(state: SimulationState, fuelRequired: boolean, spinRequired: boolean, dt: number) {
+function updateEngineState(
+  state: SimulationState,
+  fuelRequired: boolean,
+  spinRequired: boolean,
+  minimumRunPermitted: boolean,
+  dt: number,
+) {
   let engineState = state.engineState
   let crankingTimerSeconds = state.crankingTimerSeconds
+  let crankingWorkKj = state.crankingWorkKj
+  let crankingDeliveredPowerKw = state.crankingDeliveredPowerKw
   let engineOnTimerSeconds = state.engineOnTimerSeconds
   let engineOffTimerSeconds = state.engineOffTimerSeconds
   let stoppingTimerSeconds = state.stoppingTimerSeconds
@@ -372,6 +406,8 @@ function updateEngineState(state: SimulationState, fuelRequired: boolean, spinRe
     if (fuelRequired && engineOffTimerSeconds >= CONTROL.minimumEngineOffSeconds) {
       engineState = 'CRANKING'
       crankingTimerSeconds = 0
+      crankingWorkKj = 0
+      crankingDeliveredPowerKw = 0
       engineOffTimerSeconds = 0
     } else if (spinRequired) {
       engineState = 'SPINNING_UNFUELED'
@@ -379,15 +415,23 @@ function updateEngineState(state: SimulationState, fuelRequired: boolean, spinRe
     }
   } else if (engineState === 'CRANKING') {
     crankingTimerSeconds += dt
-    if (crankingTimerSeconds >= CONTROL.engineCrankSeconds) {
-      engineState = fuelRequired ? 'FUELED' : 'STOPPING'
+    // Integrate only the feasible mechanical power that the preceding solved
+    // step actually delivered. A depleted source therefore contributes no
+    // work, while a lower-power but physically valid crank simply takes longer.
+    crankingWorkKj += Math.max(0, crankingDeliveredPowerKw) * dt
+    const crankComplete = crankingTimerSeconds >= CONTROL.engineCrankSeconds
+      && crankingWorkKj >= CONTROL.engineCrankRequiredWorkKj
+    if (crankComplete || (!fuelRequired && crankingTimerSeconds >= CONTROL.engineCrankSeconds)) {
+      engineState = crankComplete && fuelRequired ? 'FUELED' : 'STOPPING'
       engineOnTimerSeconds = 0
       crankingTimerSeconds = 0
+      crankingWorkKj = 0
+      crankingDeliveredPowerKw = 0
       stoppingTimerSeconds = 0
     }
   } else if (engineState === 'FUELED') {
     engineOnTimerSeconds += dt
-    if (!fuelRequired && engineOnTimerSeconds >= CONTROL.minimumEngineOnSeconds) {
+    if (!fuelRequired && (!minimumRunPermitted || engineOnTimerSeconds >= CONTROL.minimumEngineOnSeconds)) {
       engineState = spinRequired ? 'SPINNING_UNFUELED' : 'STOPPING'
       stoppingTimerSeconds = 0
     }
@@ -396,9 +440,13 @@ function updateEngineState(state: SimulationState, fuelRequired: boolean, spinRe
       engineState = 'FUELED'
       engineOnTimerSeconds = 0
       crankingTimerSeconds = 0
+      crankingWorkKj = 0
+      crankingDeliveredPowerKw = 0
     } else if (fuelRequired) {
       engineState = 'CRANKING'
       crankingTimerSeconds = 0
+      crankingWorkKj = 0
+      crankingDeliveredPowerKw = 0
     } else if (!spinRequired) {
       engineState = 'STOPPING'
       stoppingTimerSeconds = 0
@@ -409,9 +457,13 @@ function updateEngineState(state: SimulationState, fuelRequired: boolean, spinRe
       engineState = 'FUELED'
       engineOnTimerSeconds = 0
       stoppingTimerSeconds = 0
+      crankingWorkKj = 0
+      crankingDeliveredPowerKw = 0
     } else if (fuelRequired) {
       engineState = 'CRANKING'
       crankingTimerSeconds = 0
+      crankingWorkKj = 0
+      crankingDeliveredPowerKw = 0
       stoppingTimerSeconds = 0
     } else if (spinRequired) {
       engineState = 'SPINNING_UNFUELED'
@@ -423,7 +475,15 @@ function updateEngineState(state: SimulationState, fuelRequired: boolean, spinRe
       engineOnTimerSeconds = 0
     }
   }
-  return { engineState, crankingTimerSeconds, engineOnTimerSeconds, engineOffTimerSeconds, stoppingTimerSeconds }
+  return {
+    engineState,
+    crankingTimerSeconds,
+    crankingWorkKj,
+    crankingDeliveredPowerKw,
+    engineOnTimerSeconds,
+    engineOffTimerSeconds,
+    stoppingTimerSeconds,
+  }
 }
 
 function desiredEngineRpm(
@@ -483,6 +543,8 @@ function classifyObjective(
   chargeRequest: boolean,
   propulsionNeedsEngine: boolean,
   assisting: boolean,
+  evPropulsion: boolean,
+  regenerating: boolean,
   engineBraking: boolean,
   mg1Protection: boolean,
 ): SystemObjective {
@@ -493,6 +555,9 @@ function classifyObjective(
   if (engineState === 'FUELED' && chargeRequest) return 'CHARGING'
   if (engineState === 'FUELED' && assisting) return 'ASSISTING'
   if (engineState === 'FUELED' && propulsionNeedsEngine) return 'PROPULSION'
+  if (regenerating) return 'REGENERATING'
+  if (evPropulsion) return 'EV_PROPULSION'
+  if (engineState === 'FUELED') return 'IDLING'
   return 'ENGINE_OFF'
 }
 
@@ -553,10 +618,14 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     ? 0
     : VEHICLE.maxTireForceN * Math.pow(inputs.accelerator, 1.35) * (inputs.selector === 'R' ? 0.62 : 1)
   const requestedDriveForceN = requestedDriveForceMagnitude * selectorDirection
-  const unconstrainedPropulsionPowerKw = Math.abs(requestedDriveForceN * speed) / 1_000
+  // Wheel power must retain T·ω sign. Applying D torque while rolling backward
+  // (or R torque while rolling forward) initially absorbs vehicle energy.
+  const unconstrainedPropulsionPowerKw = requestedDriveForceN * speed / 1_000
   const pedalPowerLimitKw = inputs.accelerator > 0 ? Math.max(8, inputs.accelerator * LIMITS.systemPowerKw) : 0
-  const propulsionPowerKw = Math.min(unconstrainedPropulsionPowerKw, pedalPowerLimitKw, LIMITS.systemPowerKw)
-  const propulsionNeedsEngine = inputs.accelerator > 0.57 || propulsionPowerKw > 30
+  const propulsionPowerLimitKw = Math.min(pedalPowerLimitKw, LIMITS.systemPowerKw)
+  const propulsionPowerKw = clamp(unconstrainedPropulsionPowerKw, -propulsionPowerLimitKw, propulsionPowerLimitKw)
+  const propulsionNeedsEngine = propulsionPowerKw > 0
+    && (inputs.accelerator > 0.57 || propulsionPowerKw > 30)
   const brakeHoldActive = inputs.brake > 0.01 && absSpeed <= 0.35
   const movingBraking = (inputs.brake > 0.01 && absSpeed > 0.35)
     || (inputs.selector === 'B' && absSpeed > 1 && inputs.accelerator < 0.01)
@@ -565,18 +634,29 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
   )
   const mg1ProtectionRequired = carrierRangeForMg1(ringRpm).minimumRpm > 1
   const spinRequired = (inputs.selector === 'B' && absSpeed > 2 && inputs.accelerator < 0.03) || mg1ProtectionRequired
-  const engineTransition = updateEngineState(previous, fuelRequired, spinRequired, dt)
+  const minimumRunPermitted = inputs.selector !== 'N' && !movingBraking
+  const engineTransition = updateEngineState(previous, fuelRequired, spinRequired, minimumRunPermitted, dt)
 
-  const rpmTarget = desiredEngineRpm(engineTransition.engineState, inputs, propulsionPowerKw, chargeRequestActive, speedKph)
+  const dischargeLimitKw = terminalDischargeLimitKw(previous, dt)
+  const chargeLimitKw = terminalChargeLimitKw(previous, dt)
+  const reserveLimitKw = protectedReserveLimitKw(previous, dt)
+  const reserveRechargeLimitKw = protectedReserveRechargeLimitKw(previous, dt)
+  const accessoryPowerKw = BATTERY.accessoryLoadKw
+  const crankAvailableElectricalKw = Math.max(0, dischargeLimitKw + reserveLimitKw - accessoryPowerKw)
+  const crankCapability = clamp(
+    crankAvailableElectricalKw * DRIVETRAIN.inverterEfficiency * DRIVETRAIN.motorEfficiency
+      / CONTROL.engineCrankMinimumPowerKw,
+    0,
+    1,
+  )
+  const desiredRpm = desiredEngineRpm(engineTransition.engineState, inputs, propulsionPowerKw, chargeRequestActive, speedKph)
+  const rpmTarget = engineTransition.engineState === 'CRANKING' ? desiredRpm * crankCapability : desiredRpm
   const unconstrainedEngineRpm = approach(previous.engineRpm, rpmTarget, CONTROL.engineRpmRatePerSecond * dt)
   const resolvedEngine = resolveCarrierRpm(ringRpm, unconstrainedEngineRpm)
   const engineRpm = engineTransition.engineState === 'OFF' && !mg1ProtectionRequired ? 0 : resolvedEngine.carrierRpm
   const mg1Rpm = resolvedEngine.mg1Rpm
   const mg2Rpm = -ringRpm * DRIVETRAIN.mg2ReductionRatio
 
-  const dischargeLimitKw = terminalDischargeLimitKw(previous, dt)
-  const chargeLimitKw = terminalChargeLimitKw(previous, dt)
-  const reserveLimitKw = protectedReserveLimitKw(previous, dt)
   const controlLimits: FeasibilityLimits = {
     dischargeLimitKw: dischargeLimitKw * 0.995,
     chargeLimitKw: chargeLimitKw * 0.995,
@@ -589,8 +669,6 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     inverterLimitKw: LIMITS.inverterThroughputKw,
     componentSafetyFactor: 1,
   }
-  const accessoryPowerKw = BATTERY.accessoryLoadKw
-
   const gradeRadians = Math.atan(inputs.roadGradePercent / 100)
   const aerodynamicForceN = 0.5 * VEHICLE.airDensityKgM3 * VEHICLE.dragCoefficient * VEHICLE.frontalAreaM2 * speed * absSpeed
   const rollingForceN = absSpeed > 0.02
@@ -618,8 +696,13 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
   let frictionBrakePowerKw = Math.max(0, requestedBrakePowerKw - engineBrakePowerKw - regenWheelPowerKw)
   let drivetrainWheelPowerKw = movingBraking ? -(regenWheelPowerKw + engineBrakePowerKw) : propulsionPowerKw
   let enginePumpingLossKw = engineBrakePowerKw
+  const crankSourceElectricalPowerKw = Math.max(0, dischargeLimitKw + reserveLimitKw - accessoryPowerKw)
   const mg1CrankingPowerKw = engineTransition.engineState === 'CRANKING'
-    ? Math.min(5.5, Math.abs(mg1Rpm) * TWO_PI / 60 * LIMITS.mg1TorqueNm / 1_000)
+    ? Math.min(
+      5.5,
+      Math.abs(mg1Rpm) * TWO_PI / 60 * LIMITS.mg1TorqueNm * 0.86 / 1_000,
+      crankSourceElectricalPowerKw * DRIVETRAIN.inverterEfficiency * DRIVETRAIN.motorEfficiency,
+    )
     : 0
   if (engineTransition.engineState === 'SPINNING_UNFUELED' && mg1ProtectionRequired && !movingBraking) enginePumpingLossKw += 1.2
 
@@ -637,6 +720,7 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     accessoryPowerKw,
     mg1CrankingPowerKw,
     protectedReserveAvailablePowerKw: reserveLimitKw,
+    protectedReserveRechargeLimitKw: reserveRechargeLimitKw,
     usableBatteryDischargeLimitKw: dischargeLimitKw,
   }
   const chargeTaper = clamp(
@@ -650,8 +734,14 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     : inputs.accelerator > 0.65
       ? 22 * clamp((inputs.accelerator - 0.65) / 0.35, 0, 1)
       : 0
-  const combustionAllowed = engineTransition.engineState === 'FUELED' && fuelRequired && !movingBraking
-  const targetEngineTorqueNm = chooseEngineTorque(
+  const minimumRunActive = engineTransition.engineState === 'FUELED'
+    && !fuelRequired
+    && minimumRunPermitted
+    && engineTransition.engineOnTimerSeconds < CONTROL.minimumEngineOnSeconds
+  const combustionAllowed = engineTransition.engineState === 'FUELED'
+    && (fuelRequired || minimumRunActive)
+    && !movingBraking
+  const optimizedEngineTorqueNm = chooseEngineTorque(
     { ...previous, engineState: engineTransition.engineState, engineRpm, chargeRequestActive },
     inputs,
     baseContext,
@@ -659,6 +749,9 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     controlLimits,
     combustionAllowed,
   )
+  const targetEngineTorqueNm = minimumRunActive
+    ? Math.max(optimizedEngineTorqueNm, Math.min(12, engineTorqueLimitNm(engineRpm) * 0.5))
+    : optimizedEngineTorqueNm
   const engineTorqueNm = combustionAllowed
     ? approach(previous.engineTorqueNm, targetEngineTorqueNm, CONTROL.engineTorqueRatePerSecond * dt)
     : 0
@@ -828,6 +921,9 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     allocation = bestAllocation
   }
   feasibleEngineTorqueNm = engineTransition.engineState === 'FUELED' ? feasibleEngineTorqueNm : 0
+  const feasibleCrankingPowerKw = engineTransition.engineState === 'CRANKING'
+    ? Math.max(0, allocation.mg1MechanicalPowerKw)
+    : 0
 
   const preBatteryInternalPowerKw = allocation.batteryTerminalPowerKw >= 0
     ? allocation.batteryTerminalPowerKw / BATTERY.dischargeEfficiency
@@ -853,15 +949,24 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
   const engineTemperatureC = clamp(previous.engineTemperatureC + heatRate * dt, CONTROL.ambientTemperatureC, 105)
   const actualAccelerationMps2 = dt > 0 ? (newSpeed - speed) / dt : previous.vehicleAccelerationMps2
   const motionCandidate = classifyMotion(inputs, newSpeed, actualAccelerationMps2, movingBraking)
+  const oppositeDirectionRegenerationKw = movingBraking ? 0 : Math.max(0, -drivetrainWheelPowerKw)
+  const recoveredWheelPowerKw = actualRegenWheelPowerKw + oppositeDirectionRegenerationKw
   const assisting = engineTransition.engineState === 'FUELED'
     && inputs.accelerator > 0.65
     && allocation.batteryTerminalPowerKw > 1
+  const evPropulsion = engineTransition.engineState !== 'FUELED'
+    && drivetrainWheelPowerKw > 0.2
+    && allocation.mg2MechanicalPowerKw > 0.1
+  const regenerating = recoveredWheelPowerKw > 0.12
+    && allocation.batteryTerminalPowerKw < -0.12
   const objectiveCandidate = classifyObjective(
     engineTransition.engineState,
     warmupRequestActive,
     chargeRequestActive,
     propulsionNeedsEngine,
     assisting,
+    evPropulsion,
+    regenerating,
     engineBrakePowerKw > 0.2,
     mg1ProtectionRequired,
   )
@@ -880,7 +985,9 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     previous.pendingSystemObjective,
     previous.pendingSystemObjectiveTimerSeconds,
     dt,
-    objectiveCandidate === 'STARTING' || objectiveCandidate === 'MG1_PROTECTION',
+    objectiveCandidate === 'STARTING'
+      || objectiveCandidate === 'MG1_PROTECTION'
+      || (engineTransition.engineState === 'FUELED' && previous.systemObjective === 'ENGINE_OFF'),
   )
 
   const updatedState: SimulationState = {
@@ -893,6 +1000,7 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     batteryEnergyKwh: newBatteryEnergyKwh,
     batterySoc: newBatterySoc,
     protectedReserveEnergyKwh: newProtectedReserveEnergyKwh,
+    crankingDeliveredPowerKw: feasibleCrankingPowerKw,
     engineRpm: postKinematics.carrierRpm,
     engineTorqueNm: feasibleEngineTorqueNm,
     mg1Rpm: postKinematics.mg1Rpm,
@@ -944,7 +1052,7 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     rollingResistanceLossKw,
     roadGradePowerKw,
     roadLoadPowerKw: aerodynamicLossKw + rollingResistanceLossKw + roadGradePowerKw,
-    regenerativeBrakingKw: actualRegenWheelPowerKw,
+    regenerativeBrakingKw: recoveredWheelPowerKw,
     frictionBrakeLossKw: frictionBrakePowerKw,
     enginePumpingLossKw: allocation.enginePumpingLossKw,
     totalRequestedBrakingKw: requestedBrakePowerKw,
@@ -966,7 +1074,7 @@ function advanceSubstep(previous: SimulationState, rawInputs: DriverInputs, dt: 
     : createEnergyFlows(
       allocation,
       drivetrainWheelPowerKw,
-      actualRegenWheelPowerKw,
+      recoveredWheelPowerKw,
       frictionBrakePowerKw,
       engineBrakePowerKw,
       engineTransition.engineState,

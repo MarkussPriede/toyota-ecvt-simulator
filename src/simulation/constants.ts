@@ -28,6 +28,7 @@ export const BATTERY = {
   accessoryLoadKw: 0.45,
   protectedReserveCapacityKwh: 0.08,
   protectedReserveMaxPowerKw: 10,
+  protectedReserveMaxRechargeKw: 4,
 } as const
 
 export const VEHICLE = {
@@ -68,6 +69,8 @@ export const LIMITS = {
 export const CONTROL = {
   fixedSubstepSeconds: 1 / 120,
   engineCrankSeconds: 0.75,
+  engineCrankMinimumPowerKw: 2.5,
+  engineCrankRequiredWorkKj: 4,
   engineStopSeconds: 0.45,
   minimumEngineOnSeconds: 4,
   minimumEngineOffSeconds: 2,
